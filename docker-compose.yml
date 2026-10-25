@@ -1,0 +1,22 @@
+# Uso: crie um arquivo .env ao lado deste com POSTGRES_PASSWORD e JWT_SECRET e rode `docker compose up -d --build`
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: axionyx
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: axionyx
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U axionyx"], interval: 5s, retries: 10 }
+  app:
+    build: .
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgres://axionyx:${POSTGRES_PASSWORD}@db:5432/axionyx
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET (48+ caracteres aleatórios)}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      APP_TZ: America/Sao_Paulo
+      # Integrações (opcionais): FISCAL_PROVIDER, FISCAL_PROVIDER_URL, FISCAL_PROVIDER_TOKEN, WHATSAPP_*, ECOMMERCE_*, LOGISTICS_*
+    ports: ["3000:3000"]
+volumes:
+  pgdata:
