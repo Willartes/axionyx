@@ -1,7 +1,0 @@
-**/node_modules
-**/dist
-**/.angular
-**/.env
-**/*.log
-**/*.dump
-.git
