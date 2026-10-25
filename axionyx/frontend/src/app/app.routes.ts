@@ -6,7 +6,7 @@ import { SplashPage, LoginPage, MfaPage, CompanySelectPage, BranchSelectPage } f
 const p = (perm?: string | string[]) => ({ canActivate: [permGuard], data: { perm } });
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', loadComponent: () => import('./pages/site/landing.page').then((m) => m.LandingPage), title: 'AXIONYX — ERP com inteligência para o varejo vender mais' },
+  { path: '', pathMatch: 'full', loadComponent: () => import('./pages/site/landing.page').then((m) => m.LandingPage), title: 'AXIONYX — ERP com inteligência para varejo e serviços' },
   { path: 'app', component: SplashPage },
   { path: 'login', component: LoginPage },
   { path: 'mfa', component: MfaPage, canActivate: [stageGuard('mfa')] },
