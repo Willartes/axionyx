@@ -72,7 +72,7 @@ router.get('/api/receivables/:id', { perm: 'financeiro.ver' }, async (ctx) => {
   if (!r) throw notFound('Título')
   r.payments = await db.many(`SELECT p.*, u.name AS user_name, a.name AS account FROM title_payments p LEFT JOIN users u ON u.id = p.user_id LEFT JOIN financial_accounts a ON a.id = p.account_id WHERE p.title_type = 'receber' AND p.title_id = $1 ORDER BY p.created_at`, [r.id])
   r.charges = await chargesFor(db, ctx.user.companyId, { due_date: r.due_date, balance: Number(r.balance) })
-  r.audit = await db.many(`SELECT action, user_name, created_at, data FROM audit_log WHERE entity = 'receivable' AND entity_id = $1 ORDER BY created_at`, [r.id])
+  r.audit = await db.many(`SELECT action, CASE WHEN EXISTS (SELECT 1 FROM users sx WHERE sx.id = user_id AND sx.is_superadmin) THEN 'Suporte AXIONYX' ELSE user_name END AS user_name, created_at, data FROM audit_log WHERE entity = 'receivable' AND entity_id = $1 ORDER BY created_at`, [r.id])
   return r
 })
 

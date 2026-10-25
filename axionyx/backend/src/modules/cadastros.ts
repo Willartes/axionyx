@@ -44,7 +44,7 @@ router.get('/api/lookups', {}, async (ctx) => {
     db.many(`SELECT id, name, hex, code FROM colors WHERE company_id = $1 AND active ORDER BY name`, [id]),
     db.many(`SELECT id, name, cnpj FROM suppliers WHERE company_id = $1 AND active ORDER BY name`, [id]),
     db.many(`SELECT id, name, kind, max_installments, fee_pct, settlement_days FROM payment_methods WHERE company_id = $1 AND active ORDER BY sort, name`, [id]),
-    db.many(`SELECT u.id, u.name, uc.commission_pct FROM user_companies uc JOIN users u ON u.id = uc.user_id WHERE uc.company_id = $1 AND uc.active AND u.active AND (uc.is_seller OR TRUE) ORDER BY uc.is_seller DESC, u.name`, [id]),
+    db.many(`SELECT u.id, u.name, uc.commission_pct FROM user_companies uc JOIN users u ON u.id = uc.user_id WHERE uc.company_id = $1 AND uc.active AND u.active AND (NOT u.is_superadmin OR u.id = $2) ORDER BY uc.is_seller DESC, u.name`, [id, ctx.user.id]),
     db.many(`SELECT id, code, name FROM branches WHERE company_id = $1 AND active ORDER BY code`, [id]),
     db.many(`SELECT id, name, type, branch_id FROM financial_accounts WHERE company_id = $1 AND active ORDER BY type, name`, [id]),
     db.many(`SELECT id, code, name, type, dre_group FROM financial_categories WHERE company_id = $1 AND active ORDER BY code`, [id]),

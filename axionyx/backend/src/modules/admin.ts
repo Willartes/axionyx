@@ -15,7 +15,7 @@ const address = v.object({ cep: v.string().optional(), logradouro: v.string().op
 router.get('/api/admin/companies', { perm: 'admin.empresas' }, async (ctx) => {
   const where = ctx.user.isSuperadmin ? '' : 'WHERE c.id = $1'
   return db.many(`SELECT c.*, (SELECT count(*)::int FROM branches b WHERE b.company_id = c.id) AS branches,
-                         (SELECT count(*)::int FROM user_companies uc WHERE uc.company_id = c.id AND uc.active) AS users
+                         (SELECT count(*)::int FROM user_companies uc WHERE uc.company_id = c.id AND uc.active AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)) AS users
                     FROM companies c ${where} ORDER BY c.name`, ctx.user.isSuperadmin ? [] : [ctx.user.companyId])
 })
 
@@ -88,6 +88,8 @@ router.post('/api/admin/cash-registers', { perm: 'admin.empresas' }, async (ctx)
 // ---------- Usuários ----------
 router.get('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
   const w = new Where([['uc.company_id = ?', ctx.user.companyId]])
+  // o superadministrador (suporte da plataforma) não aparece nem conta como usuário da empresa cliente
+  w.add('NOT u.is_superadmin')
   if (ctx.query.q) w.add('(u.name ILIKE ? OR u.email ILIKE ?)', `%${ctx.query.q}%`, `%${ctx.query.q}%`)
   return paged(db, `SELECT u.id, u.name, u.email, u.active AND uc.active AS active, u.mfa_enabled, u.last_login_at, u.locked_until, u.created_at, r.id AS role_id, r.name AS role,
                            uc.all_branches, uc.is_seller, uc.commission_pct,
@@ -135,7 +137,7 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
   const partial: any = {}; for (const [k, s] of Object.entries(userSchema)) partial[k] = (s as any).optional()
   const b: any = parse(v.object({ ...partial, active: v.boolean().optional() }), ctx.body)
   return tx(async (c) => {
-    const uc = await c.one(`SELECT * FROM user_companies WHERE user_id = $1 AND company_id = $2 FOR UPDATE`, [ctx.params.id, ctx.user.companyId])
+    const uc = await c.one(`SELECT * FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND ($3 OR NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)) FOR UPDATE`, [ctx.params.id, ctx.user.companyId, ctx.user.isSuperadmin])
     if (!uc) throw notFound('Usuário')
     if (ctx.params.id === ctx.user.id && (b.active === false || (b.roleId && b.roleId !== uc.role_id))) throw unprocessable('Você não pode desativar ou alterar o próprio perfil.')
     if (b.name) await c.query(`UPDATE users SET name = $2, updated_at = now() WHERE id = $1`, [ctx.params.id, b.name])
@@ -151,7 +153,7 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
 })
 
 router.post('/api/admin/users/:id/reset-password', { perm: 'admin.usuarios' }, async (ctx) => {
-  const linked = await db.one(`SELECT 1 FROM user_companies WHERE user_id = $1 AND company_id = $2`, [ctx.params.id, ctx.user.companyId])
+  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND ($3 OR NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin))`, [ctx.params.id, ctx.user.companyId, ctx.user.isSuperadmin])
   if (!linked) throw notFound('Usuário')
   const temp = `Ax${randomCode(6)}${Math.floor(Math.random() * 90 + 10)}`
   await db.query(`UPDATE users SET password_hash = $2, failed_attempts = 0, locked_until = NULL, password_changed_at = now() WHERE id = $1`, [ctx.params.id, hashPassword(temp)])
@@ -161,7 +163,7 @@ router.post('/api/admin/users/:id/reset-password', { perm: 'admin.usuarios' }, a
 })
 
 router.post('/api/admin/users/:id/reset-mfa', { perm: 'admin.usuarios' }, async (ctx) => {
-  const linked = await db.one(`SELECT 1 FROM user_companies WHERE user_id = $1 AND company_id = $2`, [ctx.params.id, ctx.user.companyId])
+  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND ($3 OR NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin))`, [ctx.params.id, ctx.user.companyId, ctx.user.isSuperadmin])
   if (!linked) throw notFound('Usuário')
   await db.query(`UPDATE users SET mfa_enabled = false, mfa_secret = NULL WHERE id = $1`, [ctx.params.id])
   await audit(null, ctx, 'usuario.mfa_redefinido', 'user', ctx.params.id, null, 'critical')
@@ -171,7 +173,7 @@ router.post('/api/admin/users/:id/reset-mfa', { perm: 'admin.usuarios' }, async 
 // ---------- Perfis e permissões ----------
 router.get('/api/admin/permissions', { perm: ['admin.perfis', 'admin.usuarios'] }, async () => PERMISSIONS)
 router.get('/api/admin/roles', { perm: ['admin.perfis', 'admin.usuarios'] }, async (ctx) =>
-  db.many(`SELECT r.*, (SELECT count(*)::int FROM user_companies uc WHERE uc.role_id = r.id AND uc.active) AS users FROM roles r WHERE r.company_id = $1 ORDER BY r.name`, [ctx.user.companyId]))
+  db.many(`SELECT r.*, (SELECT count(*)::int FROM user_companies uc WHERE uc.role_id = r.id AND uc.active AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)) AS users FROM roles r WHERE r.company_id = $1 ORDER BY r.name`, [ctx.user.companyId]))
 
 const roleSchema = { name: v.string({ min: 2, max: 60 }), description: v.string({ max: 200 }).optional(), permissions: v.array(v.string()), maxDiscountPct: v.number({ min: 0, max: 100 }).default(0) }
 router.post('/api/admin/roles', { perm: 'admin.perfis' }, async (ctx) => {
@@ -223,9 +225,11 @@ router.get('/api/audit', { perm: 'auditoria.ver' }, async (ctx) => {
   w.addIf(q.user, 'a.user_id = ?', q.user).addIf(q.entity, 'a.entity = ?', q.entity).addIf(q.entityId, 'a.entity_id = ?', q.entityId).addIf(q.severity, 'a.severity = ?', q.severity)
     .addIf(q.from, 'a.created_at >= ?::date', q.from).addIf(q.to, "a.created_at < ?::date + interval '1 day'", q.to)
   if (q.q) w.add('(a.action ILIKE ? OR a.user_name ILIKE ? OR a.entity_id = ?)', `%${q.q}%`, `%${q.q}%`, q.q)
-  const res = await paged(db, `SELECT a.* FROM audit_log a ${w.sql} ORDER BY a.id DESC`, w.params, q, 50)
+  const res = await paged<any>(db, `SELECT a.*, EXISTS (SELECT 1 FROM users sx WHERE sx.id = a.user_id AND sx.is_superadmin) AS by_support FROM audit_log a ${w.sql} ORDER BY a.id DESC`, w.params, q, 50)
+  // ações do suporte da plataforma aparecem como "Suporte AXIONYX" para a empresa cliente
+  res.items = res.items.map(({ by_support, ...r }: any) => (by_support && !ctx.user.isSuperadmin ? { ...r, user_name: 'Suporte AXIONYX', user_id: null } : r))
   const stats = await db.one(`SELECT count(*)::int AS total, count(*) FILTER (WHERE severity = 'critical')::int AS critical, count(*) FILTER (WHERE severity = 'warning')::int AS warning,
-                                     count(DISTINCT user_id)::int AS users FROM audit_log WHERE company_id = $1 AND created_at > now() - interval '24 hours'`, [ctx.user.companyId])
+                                     count(DISTINCT user_id) FILTER (WHERE NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = audit_log.user_id AND sx.is_superadmin))::int AS users FROM audit_log WHERE company_id = $1 AND created_at > now() - interval '24 hours'`, [ctx.user.companyId])
   return { ...res, stats }
 })
 
@@ -238,7 +242,11 @@ router.get('/api/monitor', { perm: 'monitor.ver' }, async (ctx) => {
   const tables = await db.many(`SELECT relname AS table, n_live_tup::int AS rows FROM pg_stat_user_tables ORDER BY n_live_tup DESC LIMIT 12`)
   const errors = await db.many(`SELECT level, source, message, created_at FROM system_events ORDER BY id DESC LIMIT 20`)
   const outbox = await db.one(`SELECT count(*) FILTER (WHERE status IN ('pendente','processando'))::int AS pending, count(*) FILTER (WHERE status = 'erro')::int AS errors FROM outbox WHERE company_id = $1`, [ctx.user.companyId])
-  const sessions = await db.one(`SELECT count(*)::int AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > now() AND stage = 'full' AND last_seen_at > now() - interval '15 minutes'`)
+  // sessões ativas da empresa, sem contar o suporte da plataforma (o superadministrador vê o total geral)
+  const sessions = ctx.user.isSuperadmin
+    ? await db.one(`SELECT count(*)::int AS n FROM sessions WHERE revoked_at IS NULL AND expires_at > now() AND stage = 'full' AND last_seen_at > now() - interval '15 minutes'`)
+    : await db.one(`SELECT count(*)::int AS n FROM sessions s WHERE s.company_id = $1 AND s.revoked_at IS NULL AND s.expires_at > now() AND s.stage = 'full' AND s.last_seen_at > now() - interval '15 minutes'
+                      AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = s.user_id AND sx.is_superadmin)`, [ctx.user.companyId])
   const mem = process.memoryUsage()
   return {
     api: { uptimeSec: Math.round((Date.now() - metrics.startedAt) / 1000), requests: metrics.requests, errors5xx: metrics.errors, byStatus: metrics.byStatus,
@@ -270,4 +278,4 @@ router.get('/api/admin/export', { perm: 'admin.empresas' }, async (ctx) => {
 })
 
 router.get('/api/admin/backups', { perm: 'admin.empresas' }, async (ctx) =>
-  db.many(`SELECT id, user_name, created_at, data FROM audit_log WHERE company_id = $1 AND action = 'backup.exportacao' ORDER BY id DESC LIMIT 50`, [ctx.user.companyId]))
+  db.many(`SELECT id, CASE WHEN EXISTS (SELECT 1 FROM users sx WHERE sx.id = user_id AND sx.is_superadmin) THEN 'Suporte AXIONYX' ELSE user_name END AS user_name, created_at, data FROM audit_log WHERE company_id = $1 AND action = 'backup.exportacao' ORDER BY id DESC LIMIT 50`, [ctx.user.companyId]))

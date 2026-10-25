@@ -153,7 +153,7 @@ router.get('/api/sales/:id', { perm: 'vendas.ver' }, async (ctx) => {
     db.many(`SELECT kind, amount, created_at FROM loyalty_ledger WHERE source_id = $1 OR (source_type IN ('devolucao') AND source_id IN (SELECT id FROM returns WHERE sale_id = $1)) ORDER BY created_at`, [s.id]),
   ])
   if (!can(ctx.user, 'produtos.custo')) { delete s.cost_total; items.forEach((i) => delete i.unit_cost) }
-  const timeline = await db.many(`SELECT action, user_name, created_at, data FROM audit_log WHERE entity = 'sale' AND entity_id = $1 ORDER BY created_at`, [s.id])
+  const timeline = await db.many(`SELECT action, CASE WHEN EXISTS (SELECT 1 FROM users sx WHERE sx.id = user_id AND sx.is_superadmin) THEN 'Suporte AXIONYX' ELSE user_name END AS user_name, created_at, data FROM audit_log WHERE entity = 'sale' AND entity_id = $1 ORDER BY created_at`, [s.id])
   return { ...s, items, payments, receivables, returns, fiscal, commissions, loyalty, timeline }
 })
 

@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { setup, teardown, call, login, db, createCompanyWithAdmin, createUser } from './helpers'
+import { hashPassword } from '../core/crypto'
 
 /**
  * Prestadores de serviço: salão (com estética), clínica de estética e odontologia.
@@ -242,4 +243,23 @@ test('estética e inteligência de serviços: retorno vencido, ocupação e desc
   // lembrete sem consentimento não é enviado
   const remind = await call('POST', `/api/appointments/${apId}/remind`, { token: S.token })
   assert.equal(remind.status, 200); assert.equal(remind.body.status, 'bloqueado_sem_consentimento')
+})
+
+test('superadministrador (suporte) não aparece nem conta como usuário da empresa cliente', async () => {
+  const role = (await db.query(`SELECT id FROM roles WHERE company_id = $1 AND name = 'Administrador'`, [salonId])).rows[0].id
+  const su = (await db.query(`INSERT INTO users(name, email, password_hash, is_superadmin) VALUES ('Suporte Plataforma','suporte@teste.local',$1,true) RETURNING id`, [hashPassword('Teste-Senha-2026')])).rows[0].id
+  await db.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches) VALUES ($1,$2,$3,true)`, [su, salonId, role])
+  const users = await call('GET', '/api/admin/users', { token: S.token })
+  assert.ok(users.body.items.every((u: any) => u.id !== su)); assert.equal(users.body.total, 2)
+  const cos = await call('GET', '/api/admin/companies', { token: S.token })
+  assert.equal(cos.body[0].users, 2)
+  const roles = await call('GET', '/api/admin/roles', { token: S.token })
+  assert.equal(roles.body.find((r: any) => r.name === 'Administrador').users, 1)
+  const lk2 = await call('GET', '/api/lookups', { token: S.token })
+  assert.ok(lk2.body.sellers.every((u: any) => u.id !== su))
+  assert.equal((await call('PUT', `/api/admin/users/${su}`, { token: S.token, body: { active: false } })).status, 404)
+  assert.equal((await call('POST', `/api/admin/users/${su}/reset-password`, { token: S.token })).status, 404)
+  await db.query(`INSERT INTO audit_log(company_id, user_id, user_name, action, severity) VALUES ($1,$2,'Suporte Plataforma','teste.suporte','info')`, [salonId, su])
+  const aud = await call('GET', '/api/audit?q=teste.suporte', { token: S.token })
+  assert.equal(aud.body.items[0].user_name, 'Suporte AXIONYX')
 })
