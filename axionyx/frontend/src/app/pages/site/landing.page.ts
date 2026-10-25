@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { DOCUMENT } from '@angular/common';
@@ -154,14 +154,91 @@ import { AuthService } from '../../core/auth.service';
       .showcase { grid-template-columns:1fr; } .tabs { flex-direction:row; overflow-x:auto; } .tab { min-width:220px; }
       .float-card { display:none; }
     }
+    .swipe-hint, .m-cta, .m-only { display:none; }
+    @media (min-width: 761px) and (max-width: 1080px) {
+      .grid.swipe { display:flex !important; overflow-x:auto; scroll-snap-type:x mandatory; gap:16px; margin-left:-24px !important; margin-right:-24px !important; padding:2px 24px 14px; scrollbar-width:none; }
+      .grid.swipe::-webkit-scrollbar { display:none; }
+      .grid.swipe > * { flex:0 0 44%; scroll-snap-align:start; }
+      .grid.swipe .reveal { opacity:1; transform:none; }
+      .grid.swipe + .swipe-hint, .rows + .swipe-hint { display:none; }
+      section { padding:72px 0; }
+    }
     @media (max-width: 760px) {
       .wrap { padding:0 16px; }
-      .hero { padding-top:52px; } .hero h1 { font-size:34px; } .hero p.lead { font-size:16.5px; }
-      h2 { font-size:28px; } section { padding:64px 0; }
+      .top .wrap { height:58px; gap:12px; } .brand { font-size:17px; } .brand ax-logo { transform:scale(.9); }
+      .nav.mobile { top:58px; }
+      .app-link { padding:7px 11px; font-size:13px; }
+      .top-cta .btn { display:none; }
+      /* hero enxuto */
+      .hero { padding-top:34px; }
+      .eyebrow { font-size:11.5px; padding:5px 10px; }
+      .hero h1 { font-size:30px; line-height:1.12; margin:14px 0 12px; }
+      .hero p.lead { font-size:15.5px; line-height:1.55; }
+      .d-only { display:none; }
+      .hero-ctas { flex-direction:column; gap:10px; margin:22px 0 16px; }
+      .hero-ctas .btn { width:100%; padding:14px 18px; }
+      .checks { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; font-size:12.5px; }
+      .checks span { align-items:flex-start; line-height:1.35; }
+      .hero-shot { margin-top:28px; }
+      .browser-bar { height:24px; } .browser-bar span { display:none; }
       .g4, .g3, .g2 { grid-template-columns:1fr; }
-      .row { grid-template-columns:1fr; gap:24px; margin-top:52px; } .row.rev > :first-child { order:0; } .row h3 { font-size:23px; }
-      .contact .wrap { grid-template-columns:1fr; gap:32px; } .form .f2 { grid-template-columns:1fr; }
-      .top-cta .btn { display:none; } .checks { gap:10px 18px; }
+      .row { grid-template-columns:1fr; gap:20px; margin-top:40px; } .row.rev > :first-child { order:0; }
+      /* seções compactas */
+      section { padding:48px 0; }
+      h2 { font-size:25px; margin:8px 0 10px; }
+      .sub { font-size:15px; line-height:1.6; }
+      .kicker { font-size:11.5px; }
+      .card { padding:18px; border-radius:14px; }
+      .card h3 { font-size:16px; margin:10px 0 6px; }
+      .card p { font-size:14px; }
+      /* carrosséis com deslize lateral no lugar de listas longas */
+      .swipe { display:flex !important; overflow-x:auto; scroll-snap-type:x mandatory; gap:12px; margin:22px -16px 0 !important; padding:2px 16px 14px; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+      .swipe::-webkit-scrollbar { display:none; }
+      .swipe > * { flex:0 0 82%; scroll-snap-align:center; }
+      .swipe .reveal { opacity:1; transform:none; }
+      .swipe .card:hover { transform:none; }
+      .swipe-hint { display:flex; align-items:center; justify-content:center; gap:6px; font-size:12px; color:#7E93A8; margin-top:4px; }
+      .intel .swipe-hint { color:#7FD3EE; }
+      /* demonstração das telas: abas viram chips roláveis */
+      .showcase { margin-top:30px; gap:14px; }
+      .tabs { flex-direction:row; overflow-x:auto; gap:8px; scrollbar-width:none; margin:0 -16px; padding:0 16px 4px; }
+      .tabs::-webkit-scrollbar { display:none; }
+      .tab { min-width:0; flex:0 0 auto; padding:9px 13px; border-radius:999px; }
+      .tab b { font-size:13px; white-space:nowrap; } .tab span { display:none; }
+      .shot-bullets span { font-size:12px; padding:5px 9px; }
+      /* recursos: cada bloco vira um cartão com a tela em cima */
+      .rows.swipe > .row { display:flex; flex-direction:column; gap:12px; margin-top:0; background:#fff; border:1px solid #E3EAF1; border-radius:14px; padding:14px; flex-basis:86%; }
+      .rows.swipe > .row > img { order:-1; border-radius:10px; box-shadow:none; }
+      .rows.swipe .row h3 { font-size:18px; margin:4px 0 6px; }
+      .rows.swipe .row p { font-size:14px; line-height:1.55; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+      .rows.swipe .row ul { display:none; }
+      .modules-grid > .card { flex-basis:62%; }
+      .modules-grid .card p { font-size:13px; }
+      /* confiança: grade compacta 2×3 */
+      .trust .grid { grid-template-columns:1fr 1fr !important; gap:10px; margin-top:24px !important; }
+      .trust .card { padding:14px; }
+      .trust .card h3 { font-size:14px; margin:8px 0 4px; }
+      .trust .card p { font-size:12.5px; line-height:1.45; }
+      .trust .ico { width:34px; height:34px; border-radius:10px; }
+      /* como funciona */
+      .steps { gap:18px !important; margin-top:26px !important; }
+      .step { padding-left:52px; } .step:before { width:38px; height:38px; font-size:16px; border-radius:10px; }
+      .step h3 { font-size:16px; }
+      /* dúvidas e contato */
+      .faq { margin-top:20px; }
+      .q button { font-size:15px; padding:15px 2px; }
+      .q .a { font-size:14px; }
+      .contact .wrap { grid-template-columns:1fr; gap:24px; } .form .f2 { grid-template-columns:1fr; }
+      .contact .bul { display:none; }
+      .form { padding:20px; border-radius:16px; }
+      footer { padding:32px 0 96px; }
+      /* barra fixa de ação no celular */
+      .m-cta { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:60; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-bottom)); background:rgba(11,31,51,.96); backdrop-filter:blur(10px); border-top:1px solid rgba(255,255,255,.08);
+        transform:translateY(110%); transition:transform .25s ease; }
+      .m-cta.on { transform:none; }
+      .m-cta .btn { flex:1; padding:12px 14px; font-size:14px; }
+      .m-cta .app-link { justify-content:center; }
+      .m-only { display:block; }
     }
   `],
   template: `
@@ -183,7 +260,7 @@ import { AuthService } from '../../core/auth.service';
     <div class="wrap">
       <span class="eyebrow"><ax-icon name="axionyx" [size]="14" /> ERP com inteligência comercial para varejo e serviços</span>
       <h1>Pare de decidir no achismo. <em>Venda mais</em> com um ERP que mostra o que comprar, quanto cobrar e quem chamar.</h1>
-      <p class="lead">O AXIONYX une PDV, estoque, financeiro e fiscal a uma central de inteligência que prevê a demanda, sugere a reposição, calcula o preço certo e aponta oportunidades de venda — tudo com os dados reais da sua loja.</p>
+      <p class="lead">O AXIONYX une PDV, estoque, financeiro e fiscal a uma central de inteligência<span class="d-only"> que prevê a demanda, sugere a reposição, calcula o preço certo e aponta oportunidades de venda</span> — tudo com os dados reais da sua loja.</p>
       <div class="hero-ctas">
         <a class="btn btn-blue" href="#contato" (click)="go($event, 'contato')">Agendar demonstração <ax-icon name="arrow-right" [size]="17" /></a>
         <a class="btn btn-ghost-light" href="#inteligencia" (click)="go($event, 'inteligencia')"><ax-icon name="brain" [size]="17" /> Ver a inteligência em ação</a>
@@ -205,12 +282,13 @@ import { AuthService } from '../../core/auth.service';
     <div class="wrap">
       <div class="center reveal"><div class="kicker">Onde o varejo perde dinheiro</div><h2>Os vazamentos que o AXIONYX ajuda a fechar</h2>
         <p class="sub">A maior parte do lucro de uma loja escapa em decisões do dia a dia. O sistema transforma cada uma delas em um número claro e em uma ação.</p></div>
-      <div class="grid g4" style="margin-top:44px">
+      <div class="grid g4 swipe" style="margin-top:44px">
         @for (p of pains; track p.title) {
           <div class="card reveal"><span class="ico" style="background:#FDECEC;color:#C93636"><ax-icon [name]="p.icon" [size]="21" /></span><h3>{{ p.title }}</h3><p>{{ p.text }}</p>
             <div class="fix"><ax-icon name="check" [size]="15" /> {{ p.fix }}</div></div>
         }
       </div>
+      <div class="swipe-hint">Deslize para ver mais <ax-icon name="arrow-right" [size]="13" /></div>
     </div>
   </section>
 
@@ -218,9 +296,10 @@ import { AuthService } from '../../core/auth.service';
     <div class="wrap">
       <div class="reveal"><div class="kicker">AXIONYX Intelligence</div><h2>Inteligência que vira venda, não relatório parado</h2>
         <p class="sub">Modelos estatísticos e regras de negócio rodando sobre as suas vendas, o seu estoque e o seu financeiro. Cada sugestão mostra de onde veio — você decide com segurança.</p></div>
-      <div class="grid g4" style="margin-top:44px">
+      <div class="grid g4 swipe" style="margin-top:44px">
         @for (f of intel; track f.title) { <div class="card reveal"><span class="ico"><ax-icon [name]="f.icon" [size]="21" /></span><h3>{{ f.title }}</h3><p>{{ f.text }}</p></div> }
       </div>
+      <div class="swipe-hint">Deslize para ver as ferramentas <ax-icon name="arrow-right" [size]="13" /></div>
       <div class="showcase reveal">
         <div class="tabs" role="tablist">
           @for (t of shows; track t.id; let i = $index) {
@@ -240,6 +319,7 @@ import { AuthService } from '../../core/auth.service';
     <div class="wrap">
       <div class="center reveal"><div class="kicker">Gestão completa</div><h2>Do caixa ao financeiro, tudo conversa com tudo</h2>
         <p class="sub">Uma venda no PDV baixa o estoque, gera o recebível, calcula a comissão, acumula cashback e alimenta os indicadores — sem planilha e sem retrabalho.</p></div>
+      <div class="rows swipe">
       @for (r of rows; track r.title; let odd = $odd) {
         <div class="row reveal" [class.rev]="odd">
           <div><div class="kicker">{{ r.kicker }}</div><h3>{{ r.title }}</h3><p>{{ r.text }}</p>
@@ -247,7 +327,9 @@ import { AuthService } from '../../core/auth.service';
           <img [src]="r.img" width="1220" height="826" [alt]="r.title" loading="lazy" />
         </div>
       }
-      <div class="grid g4" style="margin-top:72px">
+      </div>
+      <div class="swipe-hint">Deslize para ver mais <ax-icon name="arrow-right" [size]="13" /></div>
+      <div class="grid g4 swipe modules-grid" style="margin-top:72px">
         @for (m of modules; track m.title) { <div class="card reveal"><span class="ico"><ax-icon [name]="m.icon" [size]="20" /></span><h3>{{ m.title }}</h3><p>{{ m.text }}</p></div> }
       </div>
     </div>
@@ -257,12 +339,13 @@ import { AuthService } from '../../core/auth.service';
     <div class="wrap">
       <div class="center reveal"><div class="kicker">Feito para o seu ramo</div><h2>Escolha o segmento e o sistema se ajusta</h2>
         <p class="sub">Ao cadastrar a empresa, você escolhe o segmento: o AXIONYX ativa as ferramentas daquele ramo, o vocabulário certo e as categorias iniciais — e esconde o que não faz sentido para a sua operação.</p></div>
-      <div class="grid g3" style="margin-top:44px">
+      <div class="grid g3 swipe" style="margin-top:44px">
         @for (s of segments; track s.title) {
           <div class="card reveal"><span class="badge" [class.soon]="s.soon">{{ s.soon ? 'Em breve' : 'Disponível' }}</span><span class="ico" style="margin-top:14px"><ax-icon [name]="s.icon" [size]="21" /></span><h3>{{ s.title }}</h3><p>{{ s.text }}</p>
             <ul>@for (b of s.bullets; track b) { <li><ax-icon name="check" [size]="14" color="#18864B" /> {{ b }}</li> }</ul></div>
         }
       </div>
+      <div class="swipe-hint">Deslize para ver todos os segmentos <ax-icon name="arrow-right" [size]="13" /></div>
     </div>
   </section>
 
@@ -333,6 +416,11 @@ import { AuthService } from '../../core/auth.service';
     </div>
   </section>
 
+  <div class="m-cta" [class.on]="bar()">
+    <a class="btn btn-blue" href="#contato" (click)="go($event, 'contato')">Agendar demonstração</a>
+    <a class="app-link" routerLink="/app"><ax-icon name="log-in" [size]="15" /> Entrar</a>
+  </div>
+
   <footer>
     <div class="wrap">
       <div><a class="brand" href="#inicio" (click)="go($event, 'inicio')" style="font-size:16px"><ax-logo [size]="28" />AXIONYX</a>
@@ -347,7 +435,12 @@ import { AuthService } from '../../core/auth.service';
 })
 export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   private api = inject(Api); private el = inject(ElementRef<HTMLElement>); private doc = inject(DOCUMENT); readonly auth = inject(AuthService); private router = inject(Router);
-  readonly menu = signal(false); readonly show = signal(0); readonly faq = signal(0);
+  readonly menu = signal(false); readonly show = signal(0); readonly faq = signal(0); readonly bar = signal(false);
+  /** Barra de ação fixa no celular: aparece depois do topo e some perto do formulário de contato. */
+  @HostListener('window:scroll') onScroll() {
+    const y = window.scrollY, contact = this.doc.getElementById('contato')?.offsetTop ?? Infinity;
+    this.bar.set(y > 520 && y + window.innerHeight < contact + 120);
+  }
   readonly busy = signal(false); readonly sent = signal(false); readonly error = signal('');
   readonly year = new Date().getFullYear();
   lead: any = { name: '', email: '', phone: '', companyName: '', segment: '', stores: '', message: '', consent: false, website: '' };

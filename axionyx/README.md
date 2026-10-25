@@ -217,3 +217,9 @@ Configurações › Agenda: duração padrão, permitir agendar fora do expedien
 
 ### 1.5.1 — Suporte da plataforma oculto para o cliente
 O superadministrador (suporte AXIONYX), que fica vinculado às empresas que cria, não aparece mais na lista de usuários, na contagem de usuários da empresa e dos perfis, nos seletores de vendedor/profissional nem na contagem de sessões ativas do cliente, e não pode ser alterado pelo administrador da empresa. Na auditoria, as ações dele continuam registradas e aparecem como "Suporte AXIONYX". Título da aba: "AXIONYX - ERP".
+
+### 1.5.2 — Responsividade mobile e PC
+- **Celular**: tabelas viram cartões legíveis (rótulo + valor), indicadores em 2 colunas, formulários em coluna única com campos de 16px (sem zoom automático no iPhone), janelas abrem como painel inferior com botões fixos, Configurações com abas horizontais e avisos em largura total.
+- **Site de apresentação no celular**: página ~55% mais curta — seções em carrossel deslizante, textos enxutos, abas viram chips, etapas e FAQ compactos e barra fixa "Agendar demonstração / Entrar" durante a rolagem. Tablet também em carrossel.
+- **PC**: grades de formulário com colunas automáticas; campos e caixas de seleção sempre alinhados pela base (ex.: Precificar Produto) em qualquer largura de tela.
+- Sem alterações no banco de dados.

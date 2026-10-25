@@ -67,16 +67,16 @@ const TABS: { id: string; label: string; icon: string; title: string; desc: stri
   imports: [FormsModule, IconComponent, StateComponent, ...FMT],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-  <div style="display:flex;height:100%">
-    <div style="width:210px;border-right:1px solid #DCE4EC;background:white;padding:12px 0;flex-shrink:0">
-      <div style="padding:4px 12px 12px;font-size:11px;font-weight:700;color:#A0AFBF;text-transform:uppercase;letter-spacing:0.05em">Configurações</div>
+  <div class="cfg-layout" style="display:flex;height:100%">
+    <div class="cfg-menu" style="width:210px;border-right:1px solid #DCE4EC;background:white;padding:12px 0;flex-shrink:0">
+      <div class="cfg-menu-title" style="padding:4px 12px 12px;font-size:11px;font-weight:700;color:#A0AFBF;text-transform:uppercase;letter-spacing:0.05em">Configurações</div>
       @for (t of visibleTabs(); track t.id) {
         <button (click)="tab.set(t.id)" [style.background]="tab() === t.id ? '#E3EFF9' : 'transparent'" [style.color]="tab() === t.id ? '#0875D1' : '#647687'" [style.font-weight]="tab() === t.id ? 600 : 400" [style.border-left]="'3px solid ' + (tab() === t.id ? '#0875D1' : 'transparent')"
           style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 16px;border:none;font-size:13px;cursor:pointer;text-align:left"><ax-icon [name]="t.icon" [size]="14" /> {{ t.label }}</button>
       }
     </div>
-    <div style="flex:1;overflow-y:auto;background:#F4F7FA">
-      <div style="max-width:680px;margin:0 auto;padding:28px">
+    <div class="cfg-body" style="flex:1;overflow-y:auto;background:#F4F7FA">
+      <div class="cfg-inner" style="max-width:680px;margin:0 auto;padding:28px">
         @let t = cur();
         <div class="card" style="padding:24px">
           <div style="font-size:16px;font-weight:700;color:#172B3A">{{ t.title }}</div><div style="font-size:12px;color:#647687;margin-bottom:18px">{{ t.desc }}</div>

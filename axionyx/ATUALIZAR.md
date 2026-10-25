@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.5.zip           # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.5.2.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.5: odontologia, estética e salão de beleza + nova marca"
+git commit -m "AXIONYX 1.5.2: responsividade mobile e PC"
 git push origin main
 ```
 
@@ -30,3 +30,5 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 - Site institucional em `/` com link **Axionyx** (canto superior direito) para o sistema e formulário de demonstração.
 - Segmentos de negócio: Moda (convertida, sem perder nada), Hortifrúti/Quitanda, Adega/Bebidas e Varejo geral.
 - Venda por peso, leitura de balança, etiqueta de balança, lotes e validade (FEFO), perdas, embalagens unidade/caixa, combos e controle de maioridade.
+
+**1.5.2**: só frontend (responsividade) e número de versão — nenhuma migração nova, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba) para limpar o cache.

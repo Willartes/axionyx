@@ -201,7 +201,7 @@ export class PrecificacaoPage implements OnInit {
         <div><label class="field-label">Categoria *</label><select class="input-field" [(ngModel)]="f.category">@for (c of cats; track c[0]) { <option [value]="c[0]">{{ c[1] }}</option> }</select></div>
         <div><label class="field-label">Valor mensal (R$) *</label><input type="number" min="0" step="0.01" class="input-field mono" [(ngModel)]="f.monthly_amount" /></div>
         <div><label class="field-label">Abrangência</label><select class="input-field" [(ngModel)]="f.branch_id"><option value="">Empresa toda</option>@for (b of lk.data()?.branches ?? []; track b.id) { <option [value]="b.id">{{ b.name }}</option> }</select></div>
-        <div style="display:flex;align-items:flex-end"><label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" [(ngModel)]="f.active" /> Ativo (entra no cálculo)</label></div>
+        <div class="check-cell"><label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" [(ngModel)]="f.active" /> Ativo (entra no cálculo)</label></div>
         <div class="span-all"><label class="field-label">Observação</label><input class="input-field" [(ngModel)]="f.notes" maxlength="500" /></div>
       </div>
       <p style="font-size:11px;color:#647687;margin-top:8px">Valores anuais (IPTU, seguro, 13º) devem ser divididos por 12. Custos que variam com cada venda (taxa de cartão, comissão, impostos) vão em Custos Variáveis.</p>
@@ -447,7 +447,7 @@ export class CustosVariaveisPage implements OnInit {
         <div class="form-grid-3">
           <div><label class="field-label">Despesas variáveis (%)</label><input type="number" min="0" max="99.99" step="0.01" class="input-field mono" [(ngModel)]="f.variablePct" (ngModelChange)="recalc()" [placeholder]="ctx()?.variablePct" /></div>
           <div><label class="field-label">Custos fixos (%)</label><input type="number" min="0" max="99.99" step="0.01" class="input-field mono" [(ngModel)]="f.fixedPct" (ngModelChange)="recalc()" [disabled]="!f.includeFixedCosts" [placeholder]="ctx()?.fixedPctRaw | num:2" /></div>
-          <div style="display:flex;align-items:flex-end"><label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" [(ngModel)]="f.includeFixedCosts" (ngModelChange)="recalc()" /> Ratear custos fixos</label></div>
+          <div class="check-cell"><label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" [(ngModel)]="f.includeFixedCosts" (ngModelChange)="recalc()" /> Ratear custos fixos</label></div>
           <div><label class="field-label">Calcular por</label><select class="input-field" [(ngModel)]="f.mode" (ngModelChange)="recalc()"><option value="margem">Margem líquida desejada</option><option value="markup">Markup direto (multiplicador)</option><option value="preco">Preço informado (analisar)</option></select></div>
           @if (f.mode === 'margem') { <div><label class="field-label">Margem líquida (%)</label><input type="number" step="0.1" class="input-field mono" [(ngModel)]="f.desiredMarginPct" (ngModelChange)="recalc()" /></div> }
           @if (f.mode === 'markup') { <div><label class="field-label">Markup (ex.: 2,5)</label><input type="number" min="0" step="0.01" class="input-field mono" [(ngModel)]="f.markup" (ngModelChange)="recalc()" /></div> }

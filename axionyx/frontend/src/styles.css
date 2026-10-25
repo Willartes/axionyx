@@ -510,3 +510,82 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .kpi-l { font-size: 11px; font-weight: 600; color: #647687; text-transform: uppercase; margin-bottom: 6px; letter-spacing: .02em; }
 .kpi-v { font-size: 22px; font-weight: 700; color: #172B3A; }
 @media (max-width: 760px) { .app-content .kpi-grid-4.kpi-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } .app-content .grid-2-resp.grid-2-resp { grid-template-columns: minmax(0, 1fr) !important; } }
+
+/* =====================================================================
+   Responsividade 1.5.2 — formulários sempre alinhados, PC e celular
+   ===================================================================== */
+/* Campos alinhados pela base: rótulos de 1 ou 2 linhas não desalinham os inputs da mesma linha */
+.form-grid > *, .form-grid-2 > *, .form-grid-3 > *, .form-grid-4 > * { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+.form-grid > .span-all, .form-grid-2 > .span-all, .form-grid-3 > .span-all, .form-grid-4 > .span-all { justify-content: flex-start; }
+.form-grid .field-label, .form-grid-2 .field-label, .form-grid-3 .field-label, .form-grid-4 .field-label { line-height: 1.3; }
+/* As grades se adaptam à largura disponível (cartões estreitos, telas médias) */
+.form-grid-3 { grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); }
+.form-grid-4 { grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr)); }
+.form-grid, .form-grid-2 { grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); }
+.input-field { min-width: 0; }
+
+/* Configurações: menu lateral */
+@media (max-width: 900px) {
+  .cfg-layout { flex-direction: column; height: auto !important; }
+  .cfg-menu { width: 100% !important; border-right: none !important; border-bottom: 1px solid #DCE4EC; display: flex; overflow-x: auto; padding: 0 !important; scrollbar-width: none; }
+  .cfg-menu::-webkit-scrollbar { display: none; }
+  .cfg-menu-title { display: none; }
+  .cfg-menu button { width: auto !important; white-space: nowrap; border-left: none !important; padding: 12px 14px !important; flex-shrink: 0; }
+  .cfg-inner { padding: 16px !important; }
+}
+
+/* PC médio (notebooks): respiro menor */
+@media (max-width: 1280px) and (min-width: 761px) {
+  .app-screen > div[style*="padding:24px"] { padding: 20px !important; }
+}
+
+/* Celular */
+@media (max-width: 760px) {
+  /* indicadores em duas colunas (em vez de uma por linha) */
+  .app-content [style*="grid-template-columns"]:has(> .kpi-card), .dashboard-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .kpi-card { padding: 12px !important; min-width: 0; }
+  .kpi-card [style*="font-size:22px"], .kpi-card [style*="font-size: 22px"], .kpi-v { font-size: 18px !important; }
+  /* cabeçalhos e barras de filtro quebram linha em vez de estourar a tela */
+  .app-content [style*="display:flex"][style*="justify-content:space-between"], .app-content [style*="display:flex"][style*="gap"] { flex-wrap: wrap; }
+  .app-content input.input-field[style*="width:"], .app-content select.input-field[style*="width:"] { max-width: 100%; }
+  .app-content h1 { font-size: 18px !important; }
+  /* título da tela ocupa a linha inteira; ações vão para a linha de baixo */
+  .app-content [style*="display:flex"]:has(> div > h1) > div:first-child, .page-header > div:first-child { flex: 1 1 100% !important; min-width: 0; }
+  /* toque confortável e sem zoom automático do iOS ao focar */
+  .input-field, select.input-field, textarea.input-field { font-size: 16px !important; min-height: 40px; }
+  .btn-primary, .btn-secondary, .btn-danger { min-height: 38px; }
+  .tabs-bar, .module-tabs { scrollbar-width: none; }
+  .tabs-bar::-webkit-scrollbar { display: none; }
+  .tab-item { white-space: nowrap; }
+  /* tabelas largas que continuam tabela: rolagem horizontal dentro do cartão */
+  .card[style*="overflow:hidden"], .card[style*="overflow: hidden"] { overflow-x: auto !important; }
+  /* janelas (modais) como painel inferior em tela cheia */
+  .modal-backdrop { padding: 0 !important; align-items: flex-end !important; }
+  .modal { max-width: 100% !important; border-radius: 16px 16px 0 0 !important; max-height: 94dvh; display: flex; flex-direction: column; }
+  .modal-body { max-height: none !important; flex: 1; overflow-y: auto; padding: 14px !important; }
+  .modal-footer { flex-wrap: wrap; position: sticky; bottom: 0; background: white; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)) !important; }
+  .modal-footer > button { flex: 1 1 auto; justify-content: center; }
+  .toast-host { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+}
+
+/* Tabelas viram cartões no celular (rótulo: valor), a partir de 4 colunas */
+@media (max-width: 640px) {
+  table.m-cards, table.m-cards tbody { display: block; width: 100%; min-width: 0 !important; }
+  table.m-cards thead { display: none; }
+  table.m-cards tbody { padding: 10px; background: #F5F8FB; }
+  table.m-cards tr { display: block; background: white; border: 1px solid #E3EAF1; border-radius: 10px; margin: 0 0 10px; padding: 6px 12px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
+  table.m-cards tr:last-child { margin-bottom: 0; }
+  table.m-cards td { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px 10px; padding: 6px 0 !important; border: none !important; border-bottom: 1px dashed #EEF2F6 !important; text-align: right !important; font-size: 13px; min-height: 0; width: auto !important; white-space: normal !important; }
+  table.m-cards td:last-child { border-bottom: none !important; }
+  table.m-cards td::before { content: attr(data-label); margin-right: auto; padding-right: 8px; color: #647687; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; text-align: left; max-width: 48%; }
+  table.m-cards td[data-label=""]::before { display: none; }
+  table.m-cards td:first-child { justify-content: flex-start; text-align: left !important; font-weight: 600; }
+  table.m-cards td:first-child::before { display: none; }
+  table.m-cards td:empty { display: none; }
+  table.m-cards tr.m-full td { display: block; text-align: center !important; }
+  table.m-cards tr.m-full td::before { display: none; }
+  table.m-cards td input.input-field { max-width: 140px; }
+}
+.form-grid-3 > .check-cell, .form-grid-2 > .check-cell, .form-grid-4 > .check-cell, .form-grid > .check-cell { justify-content: flex-end; align-items: flex-start; padding-bottom: 9px; }
+/* Qualquer grade de formulário montada inline também alinha os campos pela base */
+.app-content [style*="display:grid"] > div:has(> label.field-label:first-child):not(:has(> table)) { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
