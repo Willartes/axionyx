@@ -225,4 +225,4 @@ O superadministrador (suporte AXIONYX), que fica vinculado às empresas que cria
 - Sem alterações no banco de dados.
 
 ### 1.5.3 — Novo menu do site no celular
-Cabeçalho do site com a marca em destaque à esquerda e o menu hambúrguer à direita. O menu abre em painel de tela cheia com ícones por seção, botão "Agendar demonstração", marca AXIONYX em destaque e o botão **Entrar** no rodapé (fecha com Esc, ao tocar em um item ou ao alargar a tela). No PC o botão de acesso passa a se chamar "Entrar".
+Cabeçalho do site com a marca em destaque à esquerda e o menu hambúrguer à direita. O menu abre em painel de tela cheia com ícones por seção, botão "Agendar demonstração", marca AXIONYX em destaque e o botão **Entrar** no rodapé (fecha com Esc, ao tocar em um item ou ao alargar a tela). No PC o botão de acesso passa a se chamar "Entrar". (1.5.3.1: limite de estilos por componente no `angular.json` ampliado para 40 kB, pois o site ultrapassava 16 kB e travava o build de produção.)
