@@ -12,6 +12,9 @@ export interface Me {
   companies: { id: string; name: string; trade_name: string | null; cnpj: string | null; color: string; role: string; is_demo: boolean }[];
   permissions: string[];
   settings: any;
+  /** Assinatura AXIONYX (null = empresa sem contrato) */
+  billing?: { status: string; plan: string | null; price: number; billingMode: string; paidUntil: string | null; graceDays: number; suspendOn: string | null; blocked: boolean; readOnly: boolean;
+    pending: { id: string; amount: number; due_date: string; checkout_url: string | null } | null } | null;
 }
 
 const KEY = 'axionyx.session';

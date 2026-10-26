@@ -9,7 +9,7 @@ import { AuthService } from '../core/auth.service';
 import { Api } from '../core/api.service';
 import { ToastService } from '../core/toast.service';
 import { NAV, TITLES, ICON_OF, NavItem } from '../core/nav';
-import { initials, doc } from '../core/format';
+import { initials, doc, DatePipe } from '../core/format';
 
 const LS_RECENT = 'axionyx.recent', LS_FAV = 'axionyx.favorites';
 const readLs = (k: string): string[] => { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } };
@@ -17,7 +17,7 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
 
 @Component({
   selector: 'ax-shell',
-  imports: [LogoComponent, RouterOutlet, FormsModule, IconComponent, AiAssistantComponent],
+  imports: [LogoComponent, RouterOutlet, FormsModule, IconComponent, AiAssistantComponent, DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div class="app-shell" style="display:flex;height:100vh;background:#F4F7FA;overflow:hidden">
@@ -174,6 +174,15 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
         </div>
       </header>
 
+      @if (me()?.billing; as b) {
+        @if (b.status === 'inadimplente') {
+          <div class="bill-banner warn no-print"><ax-icon name="alert-triangle" [size]="14" /><span>Mensalidade vencida em {{ b.paidUntil | dt }}. Regularize até {{ b.suspendOn | dt }} para evitar que o sistema fique somente para consulta.</span><a (click)="go('minha-assinatura')">Pagar agora</a></div>
+        } @else if (b.status === 'suspenso') {
+          <div class="bill-banner danger no-print"><ax-icon name="lock" [size]="14" /><span>Assinatura suspensa por falta de pagamento: modo somente consulta. Seus dados estão preservados.</span><a (click)="go('minha-assinatura')">Regularizar</a></div>
+        } @else if (b.status === 'cancelado') {
+          <div class="bill-banner muted no-print"><ax-icon name="archive" [size]="14" /><span>Assinatura cancelada: os dados continuam disponíveis para consulta e exportação.</span><a (click)="go('minha-assinatura')">Ver detalhes</a></div>
+        }
+      }
       @if (me()?.company?.is_demo) {
         <div class="demo-banner no-print"><ax-icon name="flask-conical" [size]="13" /> Empresa de demonstração — todos os dados desta empresa são fictícios e servem apenas para teste.</div>
       }
@@ -244,7 +253,9 @@ export class ShellComponent implements OnInit, OnDestroy {
     const mods = new Set(me.company.modules || []);
     const moduleOf: Record<string, string> = { condicionais: 'condicional', consignacoes: 'consignacao', fidelidade: 'fidelidade', crm: 'crm', rh: 'rh', juridico: 'juridico', contabilidade: 'contabilidade', fiscal: 'fiscal', precificacao: 'precificacao', validade: 'validade', combos: 'combos',
       agenda: 'agenda', servicos: 'agenda', profissionais: 'agenda', 'planos-tratamento': 'odontograma', 'inteligencia-servicos': 'agenda' };
-    return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.perm || this.auth.can(i.perm)) && (!moduleOf[i.id] || mods.has(moduleOf[i.id]))) })).filter((s) => s.items.length);
+    const sa = !!me.user?.is_superadmin, bill = me.billing;
+    if (bill?.blocked && !sa) return [{ title: 'ASSINATURA', items: NAV.flatMap((s) => s.items).filter((i) => i.id === 'minha-assinatura') }];
+    return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.sa || sa) && (!i.billing || !!bill) && (!i.perm || this.auth.can(i.perm)) && (!moduleOf[i.id] || mods.has(moduleOf[i.id]))) })).filter((s) => s.items.length);
   });
   readonly crumbs = computed(() => TITLES[this.current()] ?? ['AXIONYX']);
   readonly userInitials = computed(() => initials(this.me()?.user?.name || ''));
@@ -270,7 +281,7 @@ export class ShellComponent implements OnInit, OnDestroy {
       const r = [id, ...this.recent().filter((x) => x !== id)].slice(0, 6); this.recent.set(r); writeLs(LS_RECENT, r);
     }
   }
-  async loadBadges() { try { this.badges.set(await this.api.get('/nav/badges')); } catch { /* silencioso */ } }
+  async loadBadges() { if (this.me()?.billing?.blocked && !this.me()?.user?.is_superadmin) return; try { this.badges.set(await this.api.get('/nav/badges')); } catch { /* silencioso */ } }
   badge(i: NavItem) { const v = i.badgeKey ? this.badges()?.[i.badgeKey] : 0; return v > 0 ? v : null; }
   alert(i: NavItem) { return !!(i.alertKey && this.badges()?.[i.alertKey] > 0); }
   isActive(i: NavItem) {

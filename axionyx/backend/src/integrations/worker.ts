@@ -3,6 +3,7 @@ import { whatsapp, ecommerce, NotConfiguredError } from './adapters'
 import { sha256 } from '../core/crypto'
 import { expireCashback } from '../services/loyalty'
 import { whatsappReady } from '../services/whatsapp'
+import { runBilling } from '../services/billing'
 
 /**
  * Worker da outbox: entrega eventos às integrações com retentativas exponenciais e registro em log.
@@ -11,6 +12,7 @@ import { whatsappReady } from '../services/whatsapp'
 let timer: NodeJS.Timeout | null = null
 let running = false
 let lastHousekeeping = 0
+let lastBilling = 0
 
 async function log(companyId: string, integrationId: string | null, topic: string, status: string, message: string, request?: unknown, response?: unknown) {
   await db.query(`INSERT INTO integration_logs(company_id, integration_id, direction, topic, status, message, request, response) VALUES ($1,$2,'saida',$3,$4,$5,$6,$7)`,
@@ -103,9 +105,20 @@ async function housekeeping() {
   } catch (e: any) { console.error('[worker] rotina periódica falhou:', e.message) }
 }
 
+/** Régua de cobrança das assinaturas AXIONYX: a cada hora (e 1 min após iniciar). */
+async function billing() {
+  if (lastBilling === 0) { lastBilling = Date.now() - 59 * 60_000; return }
+  if (Date.now() - lastBilling < 60 * 60_000) return
+  lastBilling = Date.now()
+  try {
+    const r = await runBilling()
+    if (r.errors.length) await db.query(`INSERT INTO system_events(level, source, message, data) VALUES ('warning','billing',$1,$2)`, [`Rotina de cobrança com ${r.errors.length} erro(s)`, JSON.stringify(r)])
+  } catch (e: any) { console.error('[worker] rotina de cobrança falhou:', e.message) }
+}
+
 export function startWorker(intervalMs = 5000) {
   if (timer) return
-  timer = setInterval(() => { processOutbox().catch((e) => console.error('[worker]', e.message)); housekeeping() }, intervalMs)
+  timer = setInterval(() => { processOutbox().catch((e) => console.error('[worker]', e.message)); housekeeping(); billing() }, intervalMs)
   timer.unref()
 }
 export function stopWorker() { if (timer) clearInterval(timer); timer = null }

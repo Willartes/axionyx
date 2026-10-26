@@ -13,6 +13,8 @@ export const authGuard: CanActivateFn = async () => {
 /** Verifica permissão declarada em route.data.perm (a API também valida no servidor). */
 export const permGuard: CanActivateFn = (route) => {
   const auth = inject(AuthService), router = inject(Router);
+  // assinatura sem pagamento confirmado: só "Minha assinatura"
+  if (auth.me()?.billing?.blocked && !auth.me()?.user?.is_superadmin) return router.parseUrl('/minha-assinatura');
   const perm = route.data?.['perm'];
   if (!perm || auth.can(perm)) return true;
   return router.parseUrl('/sem-permissao');

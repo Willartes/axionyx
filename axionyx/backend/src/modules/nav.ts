@@ -37,6 +37,14 @@ router.get('/api/nav/badges', {}, async (ctx) => {
   if (r.expiring_lots && can(ctx.user, 'estoque.ver')) notifications.push({ icon: 'calendar-clock', text: `${r.expiring_lots} lote(s) vencido(s) ou perto do vencimento`, link: '/validade', tone: 'warning' })
   if (r.plans_presented && can(ctx.user, 'prontuario.ver')) notifications.push({ icon: 'clipboard-list', text: `${r.plans_presented} plano(s) de tratamento aguardando aprovação do paciente`, link: '/planos-tratamento', tone: 'info' })
   if (r.integration_errors && can(ctx.user, 'integracoes.ver')) notifications.push({ icon: 'plug', text: `${r.integration_errors} evento(s) de integração com erro`, link: '/integracoes', tone: 'danger' })
+  if (ctx.user.isSuperadmin) {
+    const sx = await db.one(`SELECT (SELECT count(*)::int FROM saas_reviews WHERE status = 'aberta') AS saas_reviews,
+                                    (SELECT count(*)::int FROM saas_reviews WHERE status = 'aberta' AND severity = 'alta') AS saas_reviews_high,
+                                    (SELECT count(*)::int FROM saas_contracts WHERE status = 'em_analise') AS saas_proposals`)
+    Object.assign(r, sx)
+    if (sx.saas_proposals) notifications.unshift({ icon: 'clipboard-list', text: `${sx.saas_proposals} proposta(s) de assinatura aguardando auditoria`, link: '/saas-auditoria', tone: 'info' })
+    if (sx.saas_reviews_high) notifications.unshift({ icon: 'shield-alert', text: `${sx.saas_reviews_high} exceção(ões) de alta prioridade na carteira`, link: '/saas-auditoria', tone: 'danger' })
+  }
   return { ...r, notifications }
 })
 
@@ -58,5 +66,5 @@ router.get('/api/health', { auth: 'none' }, async () => {
   const t0 = Date.now()
   await db.query('SELECT 1')
   const m = await db.one(`SELECT count(*)::int AS n FROM schema_migrations`)
-  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.5.3' }
+  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.6.0' }
 })

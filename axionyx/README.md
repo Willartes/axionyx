@@ -226,3 +226,13 @@ O superadministrador (suporte AXIONYX), que fica vinculado às empresas que cria
 
 ### 1.5.3 — Novo menu do site no celular
 Cabeçalho do site com a marca em destaque à esquerda e o menu hambúrguer à direita. O menu abre em painel de tela cheia com ícones por seção, botão "Agendar demonstração", marca AXIONYX em destaque e o botão **Entrar** no rodapé (fecha com Esc, ao tocar em um item ou ao alargar a tela). No PC o botão de acesso passa a se chamar "Entrar". (1.5.3.1: limite de estilos por componente no `angular.json` ampliado para 40 kB, pois o site ultrapassava 16 kB e travava o build de produção.)
+
+### 1.6.0 — Minha Carteira: assinaturas, cobrança automática e auditoria
+Área exclusiva do superadministrador para gerir os clientes do próprio AXIONYX ("ERP dentro do ERP"):
+- **Painel da Carteira**: MRR, ARR, clientes ativos, ticket médio, recebido no mês (bruto, líquido e taxas), a receber, em atraso, novos, churn, gráficos de 12 meses, MRR por plano e segmento, meios de pagamento e próximos vencimentos.
+- **Clientes e Contratos**: proposta → auditoria (risco automático) → aprovação cria empresa e administrador → pagamento libera o acesso. Vincula clientes que já usam o sistema sem bloqueá-los. Cobranças avulsas, baixa manual, estorno, suspensão, reativação e cancelamento com motivo.
+- **Fila de Auditoria**: novas propostas e só as exceções das renovações (inadimplência, suspensão, chargeback, estorno, troca de titular, pagamento divergente, assinatura no cartão cancelada).
+- **Cobranças** (com exportação CSV), **Planos** e **Mercado Pago** (situação das credenciais, URL do webhook, teste de conexão e notificações recebidas).
+- **Minha assinatura** para o cliente: situação, botão de pagamento (Pix ou cartão) e histórico; avisos de vencimento e modo somente consulta quando suspenso.
+- Mercado Pago: Checkout Pro (link mensal Pix/cartão) e assinatura recorrente no cartão; webhook com assinatura HMAC verificada, consulta do pagamento na API, idempotência e conciliação horária.
+- Migração `012_assinaturas.sql` só acrescenta tabelas: empresas existentes continuam funcionando sem cobrança até serem vinculadas.

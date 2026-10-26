@@ -53,10 +53,11 @@ const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
       <div class="card" style="overflow:hidden;margin-top:16px">
         <div style="padding:12px 16px;display:flex;align-items:center;gap:8px"><ax-icon name="inbox" [size]="15" color="#0875D1" /><div style="flex:1;font-size:13px;font-weight:600">Contatos do site (pedidos de demonstração)</div><span class="muted" style="font-size:12px">{{ leads().length }} contato(s)</span></div>
         @if (leads().length) {
-          <div style="overflow-x:auto"><table class="data-table" style="width:100%;border-collapse:collapse"><thead><tr><th>Data</th><th>Nome</th><th>Contato</th><th>Empresa</th><th>Segmento</th><th>Lojas</th><th>Mensagem</th><th>Situação</th></tr></thead>
+          <div style="overflow-x:auto"><table class="data-table" style="width:100%;border-collapse:collapse"><thead><tr><th>Data</th><th>Nome</th><th>Contato</th><th>Empresa</th><th>Segmento</th><th>Lojas</th><th>Mensagem</th><th>Situação</th><th></th></tr></thead>
             <tbody>@for (l of leads(); track l.id) { <tr><td class="mono" style="font-size:11px">{{ l.created_at | dtt }}</td><td style="font-weight:500">{{ l.name }}</td><td style="font-size:12px">{{ l.email || '' }}@if (l.phone) { <div>{{ l.phone | phone }}</div> }</td>
               <td style="font-size:12px">{{ l.company_name || '—' }}</td><td style="font-size:12px">{{ l.segment || '—' }}</td><td style="font-size:12px">{{ l.stores || '—' }}</td><td style="font-size:12px;max-width:280px">{{ l.message || '—' }}</td>
-              <td><select class="input-field" style="font-size:12px;padding:3px 6px" [value]="l.status" (change)="leadStatus(l, $any($event.target).value)"><option value="novo">Novo</option><option value="em_contato">Em contato</option><option value="convertido">Convertido</option><option value="descartado">Descartado</option></select></td></tr> }</tbody></table></div>
+              <td><select class="input-field" style="font-size:12px;padding:3px 6px" [value]="l.status" (change)="leadStatus(l, $any($event.target).value)"><option value="novo">Novo</option><option value="em_contato">Em contato</option><option value="convertido">Convertido</option><option value="descartado">Descartado</option></select></td>
+              <td><button class="btn-ghost" style="font-size:11px;white-space:nowrap" (click)="router.navigate(['/saas-clientes'], { queryParams: { lead: l.id } })"><ax-icon name="clipboard-list" [size]="11" /> Criar proposta</button></td></tr> }</tbody></table></div>
         } @else { <div class="empty-state" style="padding:20px">Nenhum contato recebido pelo site ainda.</div> }
       </div>
     }
@@ -112,7 +113,7 @@ const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
   </ax-modal>`,
 })
 export class AdminEmpresasPage implements OnInit {
-  private api = inject(Api); readonly auth = inject(AuthService); private toast = inject(ToastService); private lk = inject(LookupsService);
+  private api = inject(Api); readonly auth = inject(AuthService); private toast = inject(ToastService); private lk = inject(LookupsService); readonly router = inject(Router);
   readonly R = REGIME; readonly regimes = Object.entries(REGIME);
   readonly companies = signal<any[]>([]); readonly branches = signal<any[]>([]); readonly loading = signal(true);
   readonly coOpen = signal(false); readonly brOpen = signal(false); co: any = { address: {} }; br: any = { address: {} };

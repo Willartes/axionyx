@@ -1,8 +1,16 @@
 /** Estrutura do menu lateral (mesmas seções do AXIONYX original + itens de varejo de moda). */
-export interface NavItem { id: string; label: string; icon: string; perm?: string | string[]; badgeKey?: string; alertKey?: string; isNew?: boolean }
+export interface NavItem { id: string; label: string; icon: string; perm?: string | string[]; badgeKey?: string; alertKey?: string; isNew?: boolean; /** só superadministrador */ sa?: boolean; /** só empresas com contrato de assinatura */ billing?: boolean }
 export interface NavSection { title: string; items: NavItem[] }
 
 export const NAV: NavSection[] = [
+  { title: 'MINHA CARTEIRA AXIONYX', items: [
+    { id: 'saas-carteira', label: 'Painel da Carteira', icon: 'bar-chart-3', sa: true },
+    { id: 'saas-clientes', label: 'Clientes e Contratos', icon: 'building-2', sa: true, badgeKey: 'saas_proposals' },
+    { id: 'saas-auditoria', label: 'Fila de Auditoria', icon: 'shield-check', sa: true, badgeKey: 'saas_reviews', alertKey: 'saas_reviews_high' },
+    { id: 'saas-cobrancas', label: 'Cobranças', icon: 'receipt', sa: true },
+    { id: 'saas-planos', label: 'Planos', icon: 'tag', sa: true },
+    { id: 'saas-gateway', label: 'Mercado Pago', icon: 'credit-card', sa: true },
+  ]},
   { title: 'CORE', items: [
     { id: 'admin-empresas', label: 'Empresas', icon: 'building-2', perm: 'admin.empresas' },
     { id: 'admin-usuarios', label: 'Usuários', icon: 'users', perm: 'admin.usuarios' },
@@ -52,6 +60,7 @@ export const NAV: NavSection[] = [
   ]},
   { title: 'ADMINISTRAÇÃO', items: [
     { id: 'admin-modulos', label: 'Módulos', icon: 'package', perm: 'admin.empresas' },
+    { id: 'minha-assinatura', label: 'Minha assinatura', icon: 'credit-card', billing: true },
     { id: 'configuracoes', label: 'Configurações', icon: 'settings' },
     { id: 'logs', label: 'Logs', icon: 'scroll-text', perm: 'auditoria.ver' },
   ]},
@@ -86,6 +95,8 @@ export const TITLES: Record<string, string[]> = {
   'pesquisa-operacional': ['Intelligence', 'Pesquisa Operacional'], simulacoes: ['Intelligence', 'Simulações'], 'ia-insights': ['Intelligence', 'IA Insights'],
   relatorios: ['Relatórios'], documentos: ['Documentos'], integracoes: ['Platform', 'Integrações'], whatsapp: ['Platform', 'Integrações', 'WhatsApp da empresa'], mensagens: ['Platform', 'Mensagens'], monitoramento: ['Platform', 'Monitoramento'], backup: ['Platform', 'Backup'],
   'admin-empresas': ['Administração', 'Empresas'], 'admin-usuarios': ['Administração', 'Usuários'], 'admin-permissoes': ['Administração', 'Permissões'], 'admin-modulos': ['Administração', 'Módulos'],
+  'saas-carteira': ['Minha Carteira', 'Painel'], 'saas-clientes': ['Minha Carteira', 'Clientes e Contratos'], 'saas-auditoria': ['Minha Carteira', 'Auditoria de Assinaturas'],
+  'saas-cobrancas': ['Minha Carteira', 'Cobranças'], 'saas-planos': ['Minha Carteira', 'Planos'], 'saas-gateway': ['Minha Carteira', 'Mercado Pago'], 'minha-assinatura': ['Minha assinatura'],
   auditoria: ['Auditoria'], configuracoes: ['Configurações'], logs: ['Logs do Sistema'], 'sem-permissao': ['Acesso negado'],
 };
 

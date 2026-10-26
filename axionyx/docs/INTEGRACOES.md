@@ -141,3 +141,35 @@ linguagem externo não está implementada.
 
 - **WhatsApp**: novas finalidades `agendamento` (lembrete de horário — variáveis `data`, `hora`, `profissional`, `servico`) e `retorno` (convite de retorno — variável `servico` com o último serviço). Para enviar fora da janela de 24 h, cadastre em Integrações › WhatsApp um modelo **aprovado pela Meta** e associe a finalidade. Lembretes e convites só são enviados a clientes com consentimento registrado.
 - **NFS-e (serviços)**: ainda **não** há integração. Serviços e pacotes não entram na NFC-e/NF-e (a nota de mercadorias inclui só os produtos, com os pagamentos rateados). A NFS-e é municipal e depende de um provedor/prefeitura; o código do serviço (LC 116) já pode ser informado no cadastro do serviço para uma futura integração.
+
+
+## 7. Cobrança das assinaturas AXIONYX — Mercado Pago (versão 1.6)
+
+Usada **só pela administração da plataforma** para cobrar os clientes do AXIONYX (não é a maquininha/PDV das lojas).
+
+**Fluxo**
+1. *Proposta* (Minha Carteira › Clientes e Contratos › Nova proposta, ou "Criar proposta" a partir de um contato do site) → fica **em análise** com avaliação automática de risco: CNPJ duplicado, recusado antes, situação na Receita (BrasilAPI), razão social divergente, e-mail descartável ou ligado a contrato recusado/cancelado.
+2. *Auditoria antes do pagamento*: o superadministrador aprova ou recusa. A aprovação cria a empresa, o administrador do cliente (senha temporária exibida uma única vez) e a primeira cobrança com link de pagamento.
+3. *Pagamento libera o acesso*: até o pagamento ser confirmado o cliente só vê "Minha assinatura" (HTTP 402 nas demais rotas). A confirmação vem pelo webhook (ou por baixa manual com justificativa).
+4. *Renovação*: 7 dias antes do vencimento a rotina horária gera a mensalidade (link mensal Pix/cartão) ou aguarda a cobrança automática (assinatura no cartão). Vencido → **inadimplente** (acesso mantido na tolerância) → **suspenso** (somente consulta). Pagamento regulariza sozinho.
+5. *Fila de auditoria = exceções*: inadimplência, suspensão, chargeback, estorno feito fora do sistema, troca de titular (documento do pagador diferente do último), pagamento a menor/duplicado/de contrato cancelado e assinatura no cartão cancelada/pausada.
+
+Nada é apagado: suspensão e cancelamento deixam os dados disponíveis para consulta e exportação.
+
+**Formas de cobrança por contrato**
+- `link_mensal`: Checkout Pro (Pix ou cartão), `external_reference = AXC:<id da cobrança>`.
+- `assinatura_cartao`: assinatura recorrente (`/preapproval`), `external_reference = AXK:<id do contrato>`. O Mercado Pago cobra todo mês e tenta de novo quando o cartão recusa.
+- `manual`: sem gateway; baixa manual com comprovante.
+
+**Variáveis (Railway › Variables)**
+| Variável | O que colocar |
+|---|---|
+| `MP_ACCESS_TOKEN` | Access Token da aplicação (teste: começa com `TEST-`; depois o de produção) |
+| `MP_WEBHOOK_SECRET` | Assinatura secreta exibida em Webhooks › Configurar notificações |
+| `APP_PUBLIC_URL` | Ex.: `https://seu-app.up.railway.app` (sem barra no final) |
+
+**Webhook**: URL `APP_PUBLIC_URL/api/public/billing/mercadopago`, eventos *Pagamentos*, *Planos e assinaturas* (vínculo e pagamento recorrente) e *Contestações*. Cada notificação é validada pelo cabeçalho `x-signature` (HMAC-SHA256 do manifesto `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`) e o recurso é **sempre consultado na API** antes de qualquer liberação. Notificações inválidas são registradas e recusadas (401). Se alguma se perder, a rotina horária busca os pagamentos dos links pendentes (`/v1/payments/search?external_reference=...`) e reprocessa as que falharam.
+
+**Segurança**: dados de cartão nunca passam pelo AXIONYX (checkout hospedado do Mercado Pago). Credenciais só em variáveis de ambiente. Toda ação (aprovação, recusa, baixa manual, estorno, suspensão, reativação, cancelamento) fica na auditoria com usuário e motivo.
+
+**Clientes que já usam o sistema** continuam sem bloqueio até serem vinculados (Clientes e Contratos › Vincular cliente existente), informando até quando já estão pagos.

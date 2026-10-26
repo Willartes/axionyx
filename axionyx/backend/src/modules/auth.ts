@@ -6,6 +6,7 @@ import { v, parse } from '../core/validate'
 import { hashPassword, verifyPassword, signJwt, generateTotpSecret, verifyTotp, passwordPolicy } from '../core/crypto'
 import { unauthorized, forbidden, unprocessable, HttpError } from '../core/errors'
 import { getSettings } from '../services/settings'
+import { billingSummary } from '../services/billing'
 
 async function newSession(userId: string, stage: 'mfa' | 'context' | 'full', ctx: Ctx, opts: { companyId?: string; branchId?: string; minutes?: number } = {}) {
   const minutes = opts.minutes ?? (stage === 'full' ? config.sessionHours * 60 : 15)
@@ -116,6 +117,7 @@ router.get('/api/auth/me', {}, async (ctx) => {
     user: { ...user, role: u.roleName, isSeller: u.isSeller, maxDiscountPct: u.maxDiscountPct, allBranches: u.allBranches },
     company, segment: segmentInfo(company?.segment), branch, branches, permissions: u.isSuperadmin ? ['*'] : [...u.permissions], settings,
     companies: await companiesFor(u.id, u.isSuperadmin),
+    billing: u.billingStatus ? await billingSummary(u.companyId) : null,
   }
 })
 

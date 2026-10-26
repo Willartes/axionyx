@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.5.3.1.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.6.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.5.3.1: corrige limite de CSS no build"
+git commit -m "AXIONYX 1.6.0: carteira de clientes e cobranca Mercado Pago"
 git push origin main
 ```
 
@@ -32,3 +32,5 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 - Venda por peso, leitura de balança, etiqueta de balança, lotes e validade (FEFO), perdas, embalagens unidade/caixa, combos e controle de maioridade.
 
 **1.5.2**: só frontend (responsividade) e número de versão — nenhuma migração nova, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba) para limpar o cache.
+
+**1.6.0**: nova migração `012_assinaturas.sql`, aplicada sozinha ao iniciar a API. Ela só **cria tabelas novas** (planos, contratos, cobranças, fila de auditoria, notificações do gateway); nenhuma tabela existente é alterada e as empresas atuais continuam funcionando sem bloqueio. Depois do deploy, configure no Railway as variáveis `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` e `APP_PUBLIC_URL` (passo a passo na tela Minha Carteira › Mercado Pago e em `docs/INTEGRACOES.md`, seção 7).

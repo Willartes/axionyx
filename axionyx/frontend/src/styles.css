@@ -460,6 +460,12 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 .toast.error { border-left: 3px solid #C93636; }
 .toast.info { border-left: 3px solid #00A6D6; }
 .demo-banner { background: repeating-linear-gradient(45deg, #FFF4E0, #FFF4E0 10px, #FFF8EB 10px, #FFF8EB 20px); border-bottom: 1px solid #F5E0B0; color: #8A5B00; font-size: 12px; font-weight: 500; padding: 5px 16px; display: flex; align-items: center; gap: 8px; }
+.bill-banner { display: flex; align-items: center; gap: 8px; padding: 7px 16px; font-size: 12.5px; font-weight: 500; border-bottom: 1px solid; flex-wrap: wrap; }
+.bill-banner span { flex: 1; min-width: 200px; }
+.bill-banner a { font-weight: 700; text-decoration: underline; cursor: pointer; white-space: nowrap; }
+.bill-banner.warn { background: #FFF7E6; color: #8A5B00; border-color: #F5E0B0; }
+.bill-banner.danger { background: #FDECEC; color: #A12A2A; border-color: #F3C4C4; }
+.bill-banner.muted { background: #F1F4F7; color: #4A5B6B; border-color: #DCE4EC; }
 .test-stamp { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; background: #FFF4E0; color: #8A5B00; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border: 1px dashed #D99000; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 500; background: #EEF2F6; color: #172B3A; border: 1px solid transparent; cursor: pointer; }
 .chip.active { background: #E3EFF9; color: #0875D1; border-color: #B8D6F0; }
@@ -491,7 +497,7 @@ textarea.input-field { resize: vertical; min-height: 70px; }
 }
 
 @media print {
-  .no-print, .app-sidebar, .app-topbar, .ai-panel, .demo-banner, .toast-host { display: none !important; }
+  .no-print, .app-sidebar, .app-topbar, .ai-panel, .demo-banner, .bill-banner, .toast-host { display: none !important; }
   .app-shell, .app-main, .app-content, .app-screen { height: auto !important; overflow: visible !important; display: block !important; }
   body { background: white; }
 }

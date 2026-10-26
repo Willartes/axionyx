@@ -22,6 +22,8 @@ export interface AuthUser {
   allBranches: boolean
   branchIds: string[]
   isSeller: boolean
+  /** Situação da assinatura AXIONYX da empresa (null = sem contrato/empresa da casa) */
+  billingStatus: string | null
 }
 
 export interface Ctx {
@@ -119,12 +121,13 @@ async function authenticate(req: IncomingMessage, required: Stage): Promise<Auth
   const user: AuthUser = {
     id: s.user_id, name: s.name, email: s.email, sessionId: s.id, stage: s.stage, isSuperadmin: s.is_superadmin,
     companyId: s.company_id, branchId: s.branch_id, roleId: '', roleName: '', permissions: new Set(), maxDiscountPct: 0,
-    allBranches: false, branchIds: [], isSeller: false,
+    allBranches: false, branchIds: [], isSeller: false, billingStatus: null,
   }
   if (required === 'full') {
     const r = await db.one(
       `SELECT uc.role_id, uc.all_branches, uc.is_seller, r.name AS role_name, r.permissions, r.max_discount_pct,
-              COALESCE((SELECT array_agg(branch_id) FROM user_branches ub WHERE ub.user_id = uc.user_id AND ub.company_id = uc.company_id), '{}') AS branch_ids
+              COALESCE((SELECT array_agg(branch_id) FROM user_branches ub WHERE ub.user_id = uc.user_id AND ub.company_id = uc.company_id), '{}') AS branch_ids,
+              (SELECT sc.status FROM saas_contracts sc WHERE sc.company_id = uc.company_id) AS billing_status
          FROM user_companies uc JOIN roles r ON r.id = uc.role_id
         WHERE uc.user_id = $1 AND uc.company_id = $2 AND uc.active`, [s.user_id, s.company_id])
     if (!r) throw unauthorized('Seu acesso a esta empresa foi removido.')
@@ -134,6 +137,7 @@ async function authenticate(req: IncomingMessage, required: Stage): Promise<Auth
     user.allBranches = r.all_branches || s.is_superadmin
     user.branchIds = r.branch_ids
     user.isSeller = r.is_seller
+    user.billingStatus = r.billing_status ?? null
     if (!user.allBranches && !user.branchIds.includes(s.branch_id)) throw unauthorized('Seu acesso a esta filial foi removido.')
     // atualiza "visto por último" no máximo 1x/min
     db.query(`UPDATE sessions SET last_seen_at = now() WHERE id = $1 AND last_seen_at < now() - interval '1 minute'`, [s.id]).catch(() => {})
@@ -159,6 +163,19 @@ export function branchScope(ctx: Ctx, requested?: string): string[] {
   }
   if (!u.allBranches && !u.branchIds.includes(requested)) throw forbidden('Você não tem acesso a esta filial.')
   return [requested]
+}
+
+// ---------- Assinatura AXIONYX: bloqueio por situação do contrato ----------
+/** Sem pagamento confirmado: só login, perfil e "Minha assinatura". Suspenso/cancelado: somente consulta (dados preservados e exportáveis). */
+function billingGate(ctx: Ctx) {
+  const st = ctx.user.billingStatus
+  if (ctx.path.startsWith('/api/auth/') || ctx.path.startsWith('/api/billing/')) return
+  if (st === 'aguardando_pagamento' || st === 'em_analise' || st === 'recusado')
+    throw new HttpError(402, 'assinatura_pendente', 'O acesso será liberado assim que o pagamento da assinatura for confirmado. Veja em "Minha assinatura".')
+  if ((st === 'suspenso' || st === 'cancelado') && ctx.method !== 'GET')
+    throw new HttpError(402, 'assinatura_suspensa', st === 'suspenso'
+      ? 'Assinatura suspensa por falta de pagamento: o sistema está em modo somente consulta. Regularize em "Minha assinatura".'
+      : 'Assinatura cancelada: o sistema está em modo somente consulta. Seus dados continuam disponíveis para consulta e exportação.')
 }
 
 // ---------- Auditoria ----------
@@ -249,6 +266,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     ctx = { req, res, method, path: url.pathname, params, query, body, rawBody: raw, ip: clientIp(req), user: null as any }
     const authMode = route.opts.auth ?? 'full'
     if (authMode !== 'none') ctx.user = await authenticate(req, authMode)
+    if (ctx.user?.billingStatus && !ctx.user.isSuperadmin) billingGate(ctx)
     if (route.opts.perm) requirePerm(ctx.user, route.opts.perm)
     if (route.opts.idempotent) {
       const { replay } = await idemBegin(ctx)

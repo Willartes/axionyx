@@ -10,7 +10,8 @@ if (!/_test(\?|$)/.test(new URL(testUrl).pathname + (new URL(testUrl).search ? '
 process.env.DATABASE_URL = testUrl
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'teste-' + 'x'.repeat(40)
 process.env.RUN_WORKER = 'false'
-for (const k of ['FISCAL_PROVIDER', 'FISCAL_PROVIDER_URL', 'FISCAL_PROVIDER_TOKEN', 'WHATSAPP_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'ECOMMERCE_API_URL', 'ECOMMERCE_API_TOKEN', 'LOGISTICS_API_URL', 'LOGISTICS_API_TOKEN']) delete process.env[k]
+for (const k of ['FISCAL_PROVIDER', 'FISCAL_PROVIDER_URL', 'FISCAL_PROVIDER_TOKEN', 'WHATSAPP_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'ECOMMERCE_API_URL', 'ECOMMERCE_API_TOKEN', 'LOGISTICS_API_URL', 'LOGISTICS_API_TOKEN', 'MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'APP_PUBLIC_URL']) delete process.env[k]
+process.env.CNPJ_LOOKUP = 'off'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { pool, tx } = require('../core/db') as typeof import('../core/db')
