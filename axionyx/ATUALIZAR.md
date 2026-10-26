@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.5.2.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.5.3.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.5.2: responsividade mobile e PC"
+git commit -m "AXIONYX 1.5.3: novo menu mobile do site"
 git push origin main
 ```
 

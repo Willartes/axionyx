@@ -223,3 +223,6 @@ O superadministrador (suporte AXIONYX), que fica vinculado às empresas que cria
 - **Site de apresentação no celular**: página ~55% mais curta — seções em carrossel deslizante, textos enxutos, abas viram chips, etapas e FAQ compactos e barra fixa "Agendar demonstração / Entrar" durante a rolagem. Tablet também em carrossel.
 - **PC**: grades de formulário com colunas automáticas; campos e caixas de seleção sempre alinhados pela base (ex.: Precificar Produto) em qualquer largura de tela.
 - Sem alterações no banco de dados.
+
+### 1.5.3 — Novo menu do site no celular
+Cabeçalho do site com a marca em destaque à esquerda e o menu hambúrguer à direita. O menu abre em painel de tela cheia com ícones por seção, botão "Agendar demonstração", marca AXIONYX em destaque e o botão **Entrar** no rodapé (fecha com Esc, ao tocar em um item ou ao alargar a tela). No PC o botão de acesso passa a se chamar "Entrar".

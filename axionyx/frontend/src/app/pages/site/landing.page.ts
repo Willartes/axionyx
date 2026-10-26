@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, effect, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { DOCUMENT } from '@angular/common';
@@ -21,13 +21,13 @@ import { AuthService } from '../../core/auth.service';
     a { color:inherit; text-decoration:none; }
     .wrap { max-width:1180px; margin:0 auto; padding:0 24px; }
     /* header */
-    .top { position:sticky; top:0; z-index:50; background:rgba(11,31,51,.92); backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid rgba(255,255,255,.06); }
+    .top { position:sticky; top:0; z-index:80; background:rgba(11,31,51,.92); backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid rgba(255,255,255,.06); }
     .top .wrap { display:flex; align-items:center; gap:28px; height:68px; }
     .brand { display:flex; align-items:center; gap:10px; color:#fff; font-weight:800; font-size:19px; letter-spacing:.02em; }
     .nav { display:flex; gap:22px; flex:1; }
     .nav a { color:#B8C7D6; font-size:14px; font-weight:500; transition:color .15s; }
     .nav a:hover { color:#fff; }
-    .top-cta { display:flex; align-items:center; gap:10px; }
+    .top-cta { display:flex; align-items:center; gap:10px; margin-left:auto; }
     .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:10px; font-weight:600; font-size:15px; padding:13px 22px; cursor:pointer; border:1px solid transparent; transition:transform .12s, box-shadow .15s, background .15s; white-space:nowrap; }
     .btn:hover { transform:translateY(-1px); }
     .btn-blue { background:#0875D1; color:#fff; box-shadow:0 8px 24px rgba(8,117,209,.35); }
@@ -37,7 +37,10 @@ import { AuthService } from '../../core/auth.service';
     .btn-sm { padding:9px 15px; font-size:13.5px; border-radius:9px; }
     .app-link { color:#fff; font-weight:700; font-size:14px; padding:9px 14px; border-radius:9px; border:1px solid rgba(0,166,214,.55); background:rgba(0,166,214,.12); display:inline-flex; align-items:center; gap:7px; }
     .app-link:hover { background:rgba(0,166,214,.24); }
-    .burger { display:none; background:none; border:0; color:#fff; cursor:pointer; padding:6px; }
+    .burger { display:none; width:42px; height:42px; align-items:center; justify-content:center; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); border-radius:11px; color:#fff; cursor:pointer; transition:background .15s; }
+    .burger:hover, .burger.on { background:rgba(0,166,214,.18); border-color:rgba(0,166,214,.5); }
+    /* menu lateral (mobile/tablet) */
+    .drawer { display:none; }
     /* hero */
     .hero { background:#0B1F33; color:#fff; position:relative; overflow:hidden; padding:84px 0 0; }
     .hero:before { content:''; position:absolute; inset:0; background:radial-gradient(900px 500px at 15% 10%, rgba(8,117,209,.28), transparent 60%), radial-gradient(700px 420px at 90% 0%, rgba(0,166,214,.18), transparent 60%); }
@@ -148,8 +151,23 @@ import { AuthService } from '../../core/auth.service';
     .reveal { opacity:0; transform:translateY(18px); transition:opacity .6s ease, transform .6s ease; }
     .reveal.in { opacity:1; transform:none; }
     @media (max-width: 1080px) {
-      .nav { display:none; } .burger { display:block; }
-      .nav.mobile { display:flex; position:absolute; top:68px; left:0; right:0; flex-direction:column; background:#0B1F33; padding:16px 24px 22px; gap:14px; border-bottom:1px solid rgba(255,255,255,.08); }
+      .nav { display:none; } .burger { display:inline-flex; }
+      .top-cta .app-link, .top-cta .btn { display:none; }
+      .drawer { display:flex; flex-direction:column; position:fixed; top:68px; left:0; right:0; bottom:0; z-index:75; overflow-y:auto; overscroll-behavior:contain;
+        background:radial-gradient(520px 320px at 85% 0%, rgba(0,166,214,.22), transparent 65%), linear-gradient(180deg, #0B1F33 0%, #0B2D4C 55%, #0A3A5F 100%);
+        padding:18px 20px calc(20px + env(safe-area-inset-bottom)); opacity:0; visibility:hidden; transform:translateY(-10px); transition:opacity .22s ease, transform .22s ease, visibility 0s .22s; }
+      .drawer.open { opacity:1; visibility:visible; transform:none; transition:opacity .22s ease, transform .22s ease; }
+      .drawer-nav { display:flex; flex-direction:column; gap:4px; max-width:520px; width:100%; margin:0 auto; }
+      .drawer-nav a { display:flex; align-items:center; gap:14px; color:#DCE7F1; font-size:16px; font-weight:600; padding:13px 14px; border-radius:12px; transition:background .15s; }
+      .drawer-nav a:hover, .drawer-nav a:active { background:rgba(255,255,255,.06); }
+      .drawer-nav a .ic { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; background:rgba(0,166,214,.12); color:#7FD3EE; flex:none; }
+      .drawer-nav a .chev { margin-left:auto; color:#5D7A93; }
+      .drawer-nav a.demo { margin-top:12px; justify-content:center; border:1px solid rgba(0,166,214,.55); background:rgba(0,166,214,.1); color:#fff; box-shadow:0 0 0 4px rgba(0,166,214,.06); }
+      .drawer-brand { margin-top:auto; padding:34px 0 22px; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+      .drawer-brand .name { display:flex; align-items:center; gap:12px; color:#fff; font-size:28px; font-weight:800; letter-spacing:.06em; }
+      .drawer-brand small { color:#8EA9C1; font-size:13px; }
+      .drawer-foot { border-top:1px solid rgba(255,255,255,.1); padding-top:16px; max-width:520px; width:100%; margin:0 auto; }
+      .drawer-foot .btn { width:100%; padding:14px 20px; font-size:16px; }
       .g4 { grid-template-columns:repeat(2, minmax(0,1fr)); } .g3 { grid-template-columns:repeat(2, minmax(0,1fr)); }
       .showcase { grid-template-columns:1fr; } .tabs { flex-direction:row; overflow-x:auto; } .tab { min-width:220px; }
       .float-card { display:none; }
@@ -166,7 +184,8 @@ import { AuthService } from '../../core/auth.service';
     @media (max-width: 760px) {
       .wrap { padding:0 16px; }
       .top .wrap { height:58px; gap:12px; } .brand { font-size:17px; } .brand ax-logo { transform:scale(.9); }
-      .nav.mobile { top:58px; }
+      .drawer { top:58px; }
+      .burger { width:40px; height:40px; }
       .app-link { padding:7px 11px; font-size:13px; }
       .top-cta .btn { display:none; }
       /* hero enxuto */
@@ -245,16 +264,31 @@ import { AuthService } from '../../core/auth.service';
   <header class="top">
     <div class="wrap">
       <a class="brand" href="#inicio" (click)="go($event, 'inicio')"><ax-logo [size]="34" />AXIONYX</a>
-      <nav class="nav" [class.mobile]="menu()">
+      <nav class="nav">
         @for (n of navItems; track n.id) { <a [href]="'#' + n.id" (click)="go($event, n.id)">{{ n.label }}</a> }
       </nav>
       <div class="top-cta">
         <a class="btn btn-blue btn-sm" href="#contato" (click)="go($event, 'contato')">Agendar demonstração</a>
-        <a class="app-link" routerLink="/app" title="Acessar o sistema AXIONYX"><ax-icon name="log-in" [size]="15" /> Axionyx</a>
-        <button class="burger" (click)="menu.set(!menu())" aria-label="Menu"><ax-icon [name]="menu() ? 'x' : 'menu'" [size]="22" /></button>
+        <a class="app-link" routerLink="/app" title="Acessar o sistema AXIONYX"><ax-icon name="log-in" [size]="15" /> Entrar</a>
+        <button class="burger" [class.on]="menu()" (click)="menu.set(!menu())" [attr.aria-expanded]="menu()" aria-controls="menu-mobile" [attr.aria-label]="menu() ? 'Fechar menu' : 'Abrir menu'"><ax-icon [name]="menu() ? 'x' : 'menu'" [size]="22" /></button>
       </div>
     </div>
   </header>
+  <div class="drawer" id="menu-mobile" [class.open]="menu()" [attr.aria-hidden]="!menu()" [attr.inert]="menu() ? null : ''">
+    <nav class="drawer-nav" aria-label="Menu principal">
+      @for (n of navItems; track n.id) {
+        <a [href]="'#' + n.id" (click)="go($event, n.id)"><span class="ic"><ax-icon [name]="n.icon" [size]="18" /></span>{{ n.label }}<ax-icon class="chev" name="chevron-right" [size]="18" /></a>
+      }
+      <a class="demo" href="#contato" (click)="go($event, 'contato')"><ax-icon name="calendar-days" [size]="18" /> Agendar demonstração</a>
+    </nav>
+    <div class="drawer-brand">
+      <div class="name"><ax-logo [size]="48" />AXIONYX</div>
+      <small>ERP com inteligência para varejo e serviços</small>
+    </div>
+    <div class="drawer-foot">
+      <a class="btn btn-blue" routerLink="/app" (click)="menu.set(false)"><ax-icon name="log-in" [size]="18" /> Entrar</a>
+    </div>
+  </div>
 
   <div class="hero" id="inicio">
     <div class="wrap">
@@ -446,7 +480,10 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   lead: any = { name: '', email: '', phone: '', companyName: '', segment: '', stores: '', message: '', consent: false, website: '' };
   private io?: IntersectionObserver;
 
-  readonly navItems = [{ id: 'inteligencia', label: 'Inteligência' }, { id: 'recursos', label: 'Recursos' }, { id: 'segmentos', label: 'Segmentos' }, { id: 'como-funciona', label: 'Como funciona' }, { id: 'duvidas', label: 'Dúvidas' }];
+  readonly navItems = [{ id: 'inteligencia', label: 'Inteligência', icon: 'brain' }, { id: 'recursos', label: 'Recursos', icon: 'layout-grid' }, { id: 'segmentos', label: 'Segmentos', icon: 'store' }, { id: 'como-funciona', label: 'Como funciona', icon: 'list-checks' }, { id: 'duvidas', label: 'Dúvidas', icon: 'help-circle' }];
+  private readonly lockScroll = effect(() => { const open = this.menu(); this.doc.body.style.overflow = open ? 'hidden' : ''; });
+  @HostListener('document:keydown.escape') onEsc() { this.menu.set(false); }
+  @HostListener('window:resize') onResize() { if (window.innerWidth > 1080) this.menu.set(false); }
   readonly heroChecks = ['Na nuvem, sem instalação', 'Várias lojas e empresas', 'Fiscal via provedor homologado', 'WhatsApp pela API oficial'];
   readonly pains = [
     { icon: 'boxes', title: 'Estoque parado', text: 'Dinheiro preso em produto que não gira enquanto falta o que vende.', fix: 'Curva ABC, giro, cobertura e alerta de estoque parado' },
@@ -536,7 +573,7 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
     this.io = new IntersectionObserver((entries) => entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('in'); this.io?.unobserve(en.target); } }), { rootMargin: '0px 0px -60px 0px' });
     els.forEach((e: Element) => this.io!.observe(e));
   }
-  ngOnDestroy() { this.io?.disconnect(); this.doc.title = 'AXIONYX'; }
+  ngOnDestroy() { this.io?.disconnect(); this.doc.body.style.overflow = ''; this.doc.title = 'AXIONYX'; }
   go(ev: Event, id: string) {
     ev.preventDefault(); this.menu.set(false);
     this.doc.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
