@@ -27,7 +27,7 @@ async function seedBase() {
     const exists = await c.one(`SELECT id FROM users WHERE lower(email) = lower($1)`, [email])
     if (exists) throw new Error('Usuário já existe; seed base já executado?')
     const r = await bootstrapCompany(c, { name: companyName, cnpj: cnpj ? onlyDigits(cnpj) : null, branch: { code: '001', name: process.env.BRANCH_NAME || 'Matriz', cnpj: cnpj ? onlyDigits(cnpj) : null } })
-    const u = await c.one(`INSERT INTO users(name, email, password_hash, is_superadmin) VALUES ($1,$2,$3,true) RETURNING id`, [name, email, hashPassword(password)])
+    const u = await c.one(`INSERT INTO users(name, email, password_hash, is_superadmin, platform_owner) VALUES ($1,$2,$3,true,true) RETURNING id`, [name, email, hashPassword(password)])
     await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches) VALUES ($1,$2,$3,true)`, [u.id, r.company.id, r.roles['Administrador']])
   })
   console.log(`\n✔ Empresa "${companyName}" criada.\n  Login: ${email}\n  Senha: ${process.env.ADMIN_PASSWORD ? '(a definida em ADMIN_PASSWORD)' : password}\n  Ative o MFA em Configurações > Segurança após o primeiro acesso.\n`)

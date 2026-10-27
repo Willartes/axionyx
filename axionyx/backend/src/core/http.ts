@@ -3,6 +3,7 @@ import { config } from '../config'
 import { db, Q } from './db'
 import { HttpError, forbidden, unauthorized, fromPg, badRequest, conflict, unprocessable } from './errors'
 import { verifyJwt, sha256 } from './crypto'
+import { PLATFORM_PATHS } from './platform'
 
 export type Stage = 'mfa' | 'context' | 'full'
 
@@ -24,6 +25,11 @@ export interface AuthUser {
   isSeller: boolean
   /** Situação da assinatura AXIONYX da empresa (null = sem contrato/empresa da casa) */
   billingStatus: string | null
+  /** Equipe da plataforma: proprietário (acesso total) ou agente com permissões */
+  platformOwner: boolean
+  platformPerms: Set<string>
+  /** Senha temporária: precisa trocar antes de usar o sistema */
+  mustChangePassword: boolean
 }
 
 export interface Ctx {
@@ -110,7 +116,7 @@ async function authenticate(req: IncomingMessage, required: Stage): Promise<Auth
   if (!payload) throw unauthorized()
   const s = await db.one(
     `SELECT s.id, s.stage, s.company_id, s.branch_id, s.expires_at, s.revoked_at,
-            u.id AS user_id, u.name, u.email, u.active, u.is_superadmin
+            u.id AS user_id, u.name, u.email, u.active, u.is_superadmin, u.platform_owner, u.platform_permissions, u.must_change_password
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.id = $1 AND s.user_id = $2`, [payload.sid, payload.uid])
   if (!s || s.revoked_at || new Date(s.expires_at) < new Date() || !s.active) throw unauthorized()
@@ -122,6 +128,7 @@ async function authenticate(req: IncomingMessage, required: Stage): Promise<Auth
     id: s.user_id, name: s.name, email: s.email, sessionId: s.id, stage: s.stage, isSuperadmin: s.is_superadmin,
     companyId: s.company_id, branchId: s.branch_id, roleId: '', roleName: '', permissions: new Set(), maxDiscountPct: 0,
     allBranches: false, branchIds: [], isSeller: false, billingStatus: null,
+    platformOwner: !!s.is_superadmin && !!s.platform_owner, platformPerms: new Set(s.is_superadmin ? (s.platform_permissions as string[]) ?? [] : []), mustChangePassword: !!s.must_change_password,
   }
   if (required === 'full') {
     const r = await db.one(
@@ -163,6 +170,13 @@ export function branchScope(ctx: Ctx, requested?: string): string[] {
   }
   if (!u.allBranches && !u.branchIds.includes(requested)) throw forbidden('Você não tem acesso a esta filial.')
   return [requested]
+}
+
+// ---------- Equipe da plataforma: agente sem "Alterar dados" só consulta as empresas ----------
+function supportGate(ctx: Ctx) {
+  if (ctx.method === 'GET' || ctx.user.platformPerms.has('suporte.editar')) return
+  if (PLATFORM_PATHS.some((p) => ctx.path.startsWith(p))) return
+  throw forbidden('Seu perfil de suporte é somente consulta dentro das empresas. Peça a permissão "Alterar dados nas empresas".')
 }
 
 // ---------- Assinatura AXIONYX: bloqueio por situação do contrato ----------
@@ -266,6 +280,8 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     ctx = { req, res, method, path: url.pathname, params, query, body, rawBody: raw, ip: clientIp(req), user: null as any }
     const authMode = route.opts.auth ?? 'full'
     if (authMode !== 'none') ctx.user = await authenticate(req, authMode)
+    if (ctx.user?.mustChangePassword && !ctx.path.startsWith('/api/auth/')) throw new HttpError(403, 'troca_de_senha', 'Defina uma nova senha para continuar (senha temporária).')
+    if (ctx.user?.isSuperadmin && !ctx.user.platformOwner) supportGate(ctx)
     if (ctx.user?.billingStatus && !ctx.user.isSuperadmin) billingGate(ctx)
     if (route.opts.perm) requirePerm(ctx.user, route.opts.perm)
     if (route.opts.idempotent) {

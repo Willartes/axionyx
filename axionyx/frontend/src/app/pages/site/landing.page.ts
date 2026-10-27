@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, effect, OnInit, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, effect, OnInit, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { DOCUMENT } from '@angular/common';
@@ -115,6 +115,20 @@ import { AuthService } from '../../core/auth.service';
     .seg .card li { font-size:13.5px; color:#33495E; display:flex; gap:7px; }
     .seg .badge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; background:#E3F6EC; color:#18864B; align-self:flex-start; }
     .seg .badge.soon { background:#FFF4E0; color:#B26A00; }
+    .seg-wrap { position:relative; margin-top:40px; }
+    .seg-track { display:flex; gap:20px; overflow-x:auto; scroll-snap-type:x mandatory; scroll-behavior:smooth; padding:4px 2px 18px; scrollbar-width:none; }
+    .seg-track::-webkit-scrollbar { display:none; }
+    .seg-track > .card { flex:0 0 calc((100% - 40px) / 3); scroll-snap-align:start; }
+    .seg-track .reveal { opacity:1; transform:none; }
+    .seg-nav { display:flex; align-items:center; justify-content:center; gap:14px; margin-top:6px; }
+    .seg-arrow { width:42px; height:42px; border-radius:50%; border:1px solid #DCE4EC; background:#fff; color:#0B1F33; display:grid; place-items:center; cursor:pointer; box-shadow:0 4px 14px rgba(11,31,51,.08); transition:background .15s, opacity .15s; }
+    .seg-arrow:hover:not(:disabled) { background:#EEF4FB; }
+    .seg-arrow:disabled { opacity:.35; cursor:default; }
+    .seg-dots { display:flex; gap:7px; }
+    .seg-dots button { width:8px; height:8px; border-radius:999px; border:0; padding:0; background:#C9D6E3; cursor:pointer; transition:width .2s, background .2s; }
+    .seg-dots button.on { width:22px; background:#0875D1; }
+    @media (max-width:1080px) { .seg-track > .card { flex-basis:calc((100% - 20px) / 2); } }
+    @media (max-width:760px) { .seg-track { gap:14px; margin:0 -16px; padding:4px 16px 16px; scroll-padding:0 16px; } .seg-track > .card { flex-basis:84%; } .seg-arrow { width:38px; height:38px; } }
     /* trust */
     .trust .card { text-align:left; }
     /* steps */
@@ -373,13 +387,19 @@ import { AuthService } from '../../core/auth.service';
     <div class="wrap">
       <div class="center reveal"><div class="kicker">Feito para o seu ramo</div><h2>Escolha o segmento e o sistema se ajusta</h2>
         <p class="sub">Ao cadastrar a empresa, você escolhe o segmento: o AXIONYX ativa as ferramentas daquele ramo, o vocabulário certo e as categorias iniciais — e esconde o que não faz sentido para a sua operação.</p></div>
-      <div class="grid g3 swipe" style="margin-top:44px">
-        @for (s of segments; track s.title) {
-          <div class="card reveal"><span class="badge" [class.soon]="s.soon">{{ s.soon ? 'Em breve' : 'Disponível' }}</span><span class="ico" style="margin-top:14px"><ax-icon [name]="s.icon" [size]="21" /></span><h3>{{ s.title }}</h3><p>{{ s.text }}</p>
-            <ul>@for (b of s.bullets; track b) { <li><ax-icon name="check" [size]="14" color="#18864B" /> {{ b }}</li> }</ul></div>
-        }
+      <div class="seg-wrap" role="region" aria-roledescription="carrossel" aria-label="Segmentos atendidos">
+        <div class="seg-track" #segTrack (scroll)="segScroll()">
+          @for (s of segments; track s.title) {
+            <div class="card"><span class="badge" [class.soon]="s.soon">{{ s.soon ? 'Em breve' : 'Disponível' }}</span><span class="ico" style="margin-top:14px"><ax-icon [name]="s.icon" [size]="21" /></span><h3>{{ s.title }}</h3><p>{{ s.text }}</p>
+              <ul>@for (b of s.bullets; track b) { <li><ax-icon name="check" [size]="14" color="#18864B" /> {{ b }}</li> }</ul></div>
+          }
+        </div>
+        <div class="seg-nav">
+          <button class="seg-arrow" (click)="segGo(-1)" [disabled]="segPage() === 0" aria-label="Segmentos anteriores"><ax-icon name="chevron-left" [size]="18" /></button>
+          <div class="seg-dots">@for (d of segDots(); track $index) { <button [class.on]="$index === segPage()" (click)="segTo($index)" [attr.aria-label]="'Ir para o grupo ' + ($index + 1)"></button> }</div>
+          <button class="seg-arrow" (click)="segGo(1)" [disabled]="segPage() >= segDots().length - 1" aria-label="Próximos segmentos"><ax-icon name="chevron-right" [size]="18" /></button>
+        </div>
       </div>
-      <div class="swipe-hint">Deslize para ver todos os segmentos <ax-icon name="arrow-right" [size]="13" /></div>
     </div>
   </section>
 
@@ -469,6 +489,25 @@ import { AuthService } from '../../core/auth.service';
 })
 export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   private api = inject(Api); private el = inject(ElementRef<HTMLElement>); private doc = inject(DOCUMENT); readonly auth = inject(AuthService); private router = inject(Router);
+  // carrossel de segmentos
+  private readonly segTrack = viewChild<ElementRef<HTMLDivElement>>('segTrack');
+  readonly segPage = signal(0); readonly segDots = signal<number[]>([0, 0, 0, 0]);
+  private segPerView() { const w = window.innerWidth; return w <= 760 ? 1 : w <= 1080 ? 2 : 3; }
+  private segMeasure() { const n = Math.max(1, Math.ceil(this.segments.length / this.segPerView())); if (n !== this.segDots().length) this.segDots.set(Array(n).fill(0)); }
+  segScroll() {
+    const el = this.segTrack()?.nativeElement; if (!el) return;
+    this.segMeasure();
+    const max = el.scrollWidth - el.clientWidth;
+    const p = max <= 0 ? 0 : Math.round((el.scrollLeft / max) * (this.segDots().length - 1));
+    if (p !== this.segPage()) this.segPage.set(p);
+  }
+  segTo(i: number) {
+    const el = this.segTrack()?.nativeElement; if (!el) return;
+    const card = el.children[Math.min(i * this.segPerView(), el.children.length - 1)] as HTMLElement | undefined;
+    el.scrollTo({ left: card ? card.offsetLeft - el.offsetLeft - (window.innerWidth <= 760 ? 16 : 2) : 0, behavior: 'smooth' });
+    this.segPage.set(i);
+  }
+  segGo(d: number) { this.segTo(Math.max(0, Math.min(this.segDots().length - 1, this.segPage() + d))); }
   readonly menu = signal(false); readonly show = signal(0); readonly faq = signal(0); readonly bar = signal(false);
   /** Barra de ação fixa no celular: aparece depois do topo e some perto do formulário de contato. */
   @HostListener('window:scroll') onScroll() {
@@ -483,7 +522,7 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   readonly navItems = [{ id: 'inteligencia', label: 'Inteligência', icon: 'brain' }, { id: 'recursos', label: 'Recursos', icon: 'layout-grid' }, { id: 'segmentos', label: 'Segmentos', icon: 'store' }, { id: 'como-funciona', label: 'Como funciona', icon: 'list-checks' }, { id: 'duvidas', label: 'Dúvidas', icon: 'help-circle' }];
   private readonly lockScroll = effect(() => { const open = this.menu(); this.doc.body.style.overflow = open ? 'hidden' : ''; });
   @HostListener('document:keydown.escape') onEsc() { this.menu.set(false); }
-  @HostListener('window:resize') onResize() { if (window.innerWidth > 1080) this.menu.set(false); }
+  @HostListener('window:resize') onResize() { if (window.innerWidth > 1080) this.menu.set(false); this.segMeasure(); }
   readonly heroChecks = ['Na nuvem, sem instalação', 'Várias lojas e empresas', 'Fiscal via provedor homologado', 'WhatsApp pela API oficial'];
   readonly pains = [
     { icon: 'boxes', title: 'Estoque parado', text: 'Dinheiro preso em produto que não gira enquanto falta o que vende.', fix: 'Curva ABC, giro, cobertura e alerta de estoque parado' },
@@ -536,6 +575,7 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
     { icon: 'smile', title: 'Odontologia', soon: false, text: 'Consultórios e clínicas odontológicas.', bullets: ['Agenda por dentista e prontuário', 'Odontograma e plano de tratamento', 'Aprovação e parcelamento no crediário'] },
     { icon: 'sparkles', title: 'Clínica de estética', soon: false, text: 'Estética facial, corporal e bem-estar.', bullets: ['Pacotes de sessões com saldo', 'Ficha de avaliação com anamnese', 'Agenda por profissional e sala'] },
     { icon: 'scissors', title: 'Salão de beleza e estética', soon: false, text: 'Salões, barbearias e esmalterias.', bullets: ['Comissão por serviço e por produto', 'Ficha técnica e pacotes', 'Gerente que também atende'] },
+    { icon: 'wrench', title: 'Oficina mecânica (carro e moto)', soon: false, text: 'Oficinas, centros automotivos e oficinas de moto.', bullets: ['OS com checklist e aprovação do orçamento', 'Mão de obra por serviço ou por hora', 'Peças do estoque e lembrete de revisão por km'] },
     { icon: 'store', title: 'Outros segmentos', soon: true, text: 'Pet shop, farmácia, papelaria e mais.', bullets: ['Núcleo completo já disponível', 'Ferramentas ativadas por módulo', 'Novos pacotes de segmento'] },
   ];
   readonly trust = [
@@ -568,6 +608,7 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
     this.doc.title = 'AXIONYX — ERP com inteligência para o varejo vender mais';
   }
   ngAfterViewInit() {
+    this.segMeasure();
     const els = this.el.nativeElement.querySelectorAll('.reveal');
     if (!('IntersectionObserver' in window)) { els.forEach((e: Element) => e.classList.add('in')); return; }
     this.io = new IntersectionObserver((entries) => entries.forEach((en) => { if (en.isIntersecting) { en.target.classList.add('in'); this.io?.unobserve(en.target); } }), { rootMargin: '0px 0px -60px 0px' });

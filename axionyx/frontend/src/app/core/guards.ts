@@ -15,6 +15,8 @@ export const permGuard: CanActivateFn = (route) => {
   const auth = inject(AuthService), router = inject(Router);
   // assinatura sem pagamento confirmado: só "Minha assinatura"
   if (auth.me()?.billing?.blocked && !auth.me()?.user?.is_superadmin) return router.parseUrl('/minha-assinatura');
+  const plat = route.data?.['platform'];
+  if (plat && !auth.pcan(plat)) return router.parseUrl('/sem-permissao');
   const perm = route.data?.['perm'];
   if (!perm || auth.can(perm)) return true;
   return router.parseUrl('/sem-permissao');

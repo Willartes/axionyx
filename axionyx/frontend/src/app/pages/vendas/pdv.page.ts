@@ -10,8 +10,8 @@ import { LookupsService } from '../../core/lookups.service';
 import { FMT } from '../../core/format';
 import { ScaleService } from '../../core/scale.service';
 
-interface CartItem { variant: any; qty: number; discount: number; key: string; kind?: 'unidade' | 'peso' | 'embalagem' | 'combo' | 'balanca' | 'atendimento' | 'plano'; packagingId?: string; comboId?: string; scaleCode?: string; lineTotal?: number
-  professionalId?: string; professionalName?: string; appointmentServiceId?: string; planItemId?: string }
+interface CartItem { variant: any; qty: number; discount: number; key: string; kind?: 'unidade' | 'peso' | 'embalagem' | 'combo' | 'balanca' | 'atendimento' | 'plano' | 'os'; packagingId?: string; comboId?: string; scaleCode?: string; lineTotal?: number
+  professionalId?: string; professionalName?: string; appointmentServiceId?: string; planItemId?: string; workOrderItemId?: string }
 /** Preço unitário considerando o preço por quantidade (atacarejo) do produto; o servidor recalcula e é a referência. */
 const unitPrice = (i: CartItem) => {
   if (i.kind && i.kind !== 'peso') return Number(i.variant.price);
@@ -64,17 +64,17 @@ interface Pay { methodId: string; kind: string; name: string; amount: number; in
             @for (it of cart(); track it.key; let i = $index) {
               <tr>
                 <td class="mono" style="color:#647687;font-size:12px">{{ i + 1 }}</td>
-                <td><div style="font-weight:500">{{ it.variant.name }}@if (it.kind === 'combo') { <span class="badge badge-info" style="margin-left:6px">Combo</span> }@if (it.kind === 'atendimento') { <span class="badge badge-info" style="margin-left:6px">Atendimento</span> }@if (it.kind === 'plano') { <span class="badge badge-info" style="margin-left:6px">Plano de tratamento</span> }@if (it.variant.kind === 'servico' && !it.kind) { <span class="badge badge-muted" style="margin-left:6px">Serviço</span> }@if (it.variant.kind === 'pacote') { <span class="badge badge-info" style="margin-left:6px">Pacote</span> }@if (it.kind === 'embalagem') { <span class="badge badge-muted" style="margin-left:6px">Embalagem</span> }@if (it.variant.age_restricted) { <span class="badge badge-warning" style="margin-left:6px">+18</span> }</div>
+                <td><div style="font-weight:500">{{ it.variant.name }}@if (it.kind === 'combo') { <span class="badge badge-info" style="margin-left:6px">Combo</span> }@if (it.kind === 'atendimento') { <span class="badge badge-info" style="margin-left:6px">Atendimento</span> }@if (it.kind === 'plano') { <span class="badge badge-info" style="margin-left:6px">Plano de tratamento</span> }@if (it.kind === 'os') { <span class="badge badge-info" style="margin-left:6px">OS</span> }@if (it.variant.kind === 'servico' && !it.kind) { <span class="badge badge-muted" style="margin-left:6px">Serviço</span> }@if (it.variant.kind === 'pacote') { <span class="badge badge-info" style="margin-left:6px">Pacote</span> }@if (it.kind === 'embalagem') { <span class="badge badge-muted" style="margin-left:6px">Embalagem</span> }@if (it.variant.age_restricted) { <span class="badge badge-warning" style="margin-left:6px">+18</span> }</div>
                   <div class="mono" style="font-size:11px;color:#647687">{{ it.variant.sku }}{{ it.variant.barcode ? ' · ' + it.variant.barcode : '' }}{{ it.kind === 'balanca' ? ' · etiqueta de balança' : '' }}</div>
                   @if (it.variant.track_stock && it.qty > it.variant.stock && !it.kind) { <div style="font-size:11px;color:#C93636">Saldo na filial: {{ it.variant.stock }}</div> }</td>
                 @if (auth.has('grade')) { <td><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px">@if (it.variant.color) { <span [style.background]="it.variant.color_hex || '#ccc'" style="width:9px;height:9px;border-radius:50%;border:1px solid #DCE4EC"></span>{{ it.variant.color }} } @if (it.variant.size) { <span class="badge badge-muted">{{ it.variant.size }}</span> }</span></td> }
-                @if (auth.has('agenda')) { <td>@if (it.kind === 'atendimento' || it.kind === 'plano') { <span style="font-size:12px">{{ it.professionalName || '—' }}</span> } @else if (it.variant.kind !== 'pacote') {
+                @if (auth.has('agenda')) { <td>@if (it.kind === 'atendimento' || it.kind === 'plano' || it.kind === 'os') { <span style="font-size:12px">{{ it.professionalName || '—' }}</span> } @else if (it.variant.kind !== 'pacote') {
                   <select class="input-field" style="font-size:12px;padding:3px 6px;min-width:120px" [ngModel]="it.professionalId || ''" (ngModelChange)="setProf(i, $event)"><option value="">{{ it.variant.kind === 'servico' ? 'Selecione…' : '— vendedor —' }}</option>@for (p of lk.data()?.professionals ?? []; track p.id) { <option [value]="p.id">{{ p.name }}</option> }</select> } @else { <span class="muted" style="font-size:11px">na execução</span> }</td> }
                 <td class="num">{{ unit(it) | brl }}{{ it.kind === 'peso' || it.kind === 'balanca' ? '/kg' : '' }}@if (unit(it) < it.variant.price && !it.kind) { <div style="font-size:10px;color:#18864B">preço por quantidade</div> }@else if (it.variant.price_tiers?.length && !it.kind) { <div style="font-size:10px;color:#647687">a partir de {{ it.variant.price_tiers[0].min_qty }}: {{ it.variant.price_tiers[0].unit_price | brl }}</div> }</td>
                 <td style="text-align:center;white-space:nowrap">
                   @if (it.kind === 'peso' || it.kind === 'balanca') {
                     <button class="btn-ghost mono" style="font-weight:600;padding:3px 8px" [disabled]="it.kind === 'balanca'" (click)="editWeight(i)" title="Alterar peso">{{ it.qty | num:3 }} kg</button>
-                  } @else if (it.kind === 'atendimento' || it.kind === 'plano') {
+                  } @else if (it.kind === 'atendimento' || it.kind === 'plano' || it.kind === 'os') {
                     <span class="mono" style="font-weight:600">{{ it.qty }}</span>
                   } @else {
                     <button class="qty-btn" (click)="setQty(i, it.qty - 1)" aria-label="Diminuir"><ax-icon name="minus" [size]="12" /></button>
@@ -287,11 +287,12 @@ export class PdvPage implements OnInit {
     setTimeout(() => this.picker()?.focus(), 100);
   }
   readonly origin = signal(''); readonly lockCustomer = signal(false);
-  readonly hasServices = computed(() => this.cart().some((i) => i.variant.kind === 'servico' || i.variant.kind === 'pacote' || i.kind === 'atendimento' || i.kind === 'plano'));
+  readonly hasServices = computed(() => this.cart().some((i) => i.variant.kind === 'servico' || i.variant.kind === 'pacote' || i.kind === 'atendimento' || i.kind === 'plano' || i.kind === 'os'));
   private myProfessional() { const uid = this.me()?.user?.id; return this.lk.data()?.professionals?.find((p) => p.user_id === uid)?.id; }
   setProf(i: number, id: string) { const l = [...this.cart()]; l[i] = { ...l[i], professionalId: id || undefined }; this.cart.set(l); }
   private async loadOrigin() {
-    const q = this.route.snapshot.queryParamMap; const ap = q.get('atendimento'), pl = q.get('plano');
+    const q = this.route.snapshot.queryParamMap; const ap = q.get('atendimento'), pl = q.get('plano'), os = q.get('os');
+    if (os) { await this.loadWorkOrder(os); return; }
     if (!ap && !pl) return;
     try {
       const r: any = await this.api.get(ap ? `/appointments/${ap}/checkout` : `/treatment-plans/${pl}/checkout`);
@@ -306,6 +307,17 @@ export class PdvPage implements OnInit {
       this.origin.set(ap ? `Cobrança do atendimento nº ${r.appointment.number}${covered ? ` — ${covered} serviço(s) coberto(s) por pacote/plano não são cobrados aqui` : ''}. Você pode incluir produtos vendidos no atendimento.`
         : `Cobrança do plano de tratamento nº ${r.plan.number} (valores e descontos aprovados no plano). Use o crediário para parcelar.`);
       if (!items.length) this.toast.show('Nada a cobrar: os serviços já foram cobrados ou são cobertos por pacote/plano.', 'info');
+    } catch (e) { this.toast.error(e); }
+  }
+  /** Cobrança da ordem de serviço: itens aprovados com preços e descontos da OS (peças baixam do estoque na venda). */
+  private async loadWorkOrder(id: string) {
+    try {
+      const r: any = await this.api.get(`/work-orders/${id}/checkout`);
+      if (r.customer) { this.customer.set(r.customer); this.onCustomer(); this.lockCustomer.set(true); }
+      this.cart.set(r.items.map((x: any) => ({ key: 'wo:' + x.work_order_item_id, kind: 'os', workOrderItemId: x.work_order_item_id, professionalName: x.professional, qty: Number(x.qty), discount: 0, lineTotal: Number(x.total),
+        variant: { id: x.variant_id, name: x.description, sku: x.sku, barcode: x.barcode, price: Number(x.unit_price), track_stock: x.track_stock, kind: x.kind === 'servico' || x.kind === 'mao_de_obra' ? 'servico' : 'produto', unit: x.unit } })));
+      this.origin.set(`Cobrança da OS nº ${r.workOrder.number} — ${r.workOrder.model} (${r.workOrder.plate || 'sem placa'}): valores aprovados pelo cliente.${r.pending ? ` ${r.pending} item(ns) ainda aguardam aprovação e não entram aqui.` : ''} Ao concluir, a OS pronta é entregue automaticamente.`);
+      if (!r.items.length) this.toast.show('Nada a cobrar: os itens aprovados desta OS já foram cobrados.', 'info');
     } catch (e) { this.toast.error(e); }
   }
   async loadSession() { try { this.session.set(await this.api.get('/cash/current')); } catch { this.session.set(null); } }
@@ -385,6 +397,7 @@ export class PdvPage implements OnInit {
       customerId: this.customer()?.id, sellerId: this.sellerId || undefined,
       items: this.cart().map((i) => i.kind === 'atendimento' ? { appointmentServiceId: i.appointmentServiceId, qty: 1, discount: i.discount || undefined }
         : i.kind === 'plano' ? { planItemId: i.planItemId, qty: i.qty, discount: i.discount || undefined }
+        : i.kind === 'os' ? { workOrderItemId: i.workOrderItemId, qty: i.qty, discount: i.discount || undefined }
         : i.kind === 'balanca' ? { scaleCode: i.scaleCode, qty: i.qty, discount: i.discount || undefined, professionalId: i.professionalId }
         : i.kind === 'embalagem' ? { packagingId: i.packagingId, qty: i.qty, discount: i.discount || undefined, professionalId: i.professionalId }
         : i.kind === 'combo' ? { comboId: i.comboId, qty: i.qty, discount: i.discount || undefined, professionalId: i.professionalId }

@@ -74,6 +74,8 @@ import { FMT } from '../../core/format';
         <div><label class="field-label">Comissão (%)</label><input type="number" min="0" max="100" step="0.5" class="input-field mono" [(ngModel)]="form.commission_pct" placeholder="do profissional" /></div>
         <div><label class="field-label">Retorno sugerido (dias)</label><input type="number" min="1" class="input-field mono" [(ngModel)]="form.return_days" placeholder="automático" /></div>
       </div>
+      @if (auth.has('oficina')) { <div style="margin-top:10px"><label class="field-label">Revisão a cada (km)</label><input type="number" min="100" step="500" class="input-field mono" style="max-width:220px" [(ngModel)]="form.return_km" placeholder="ex.: 5000 (troca de óleo)" />
+        <div class="muted" style="font-size:11px;margin-top:2px">Gera o lembrete de revisão do veículo na entrega da OS (por km e/ou dias).</div></div> }
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
         @if (auth.can('produtos.custo')) { <div><label class="field-label">Custo de material (R$)</label><input type="number" min="0" step="0.01" class="input-field mono" [(ngModel)]="form.cost_price" /></div> }
         <div><label class="field-label">Código do serviço (LC 116 / NFS-e)</label><input class="input-field mono" [(ngModel)]="form.service_code" placeholder="ex.: 06.01" /></div>
@@ -118,7 +120,7 @@ export class ServicosPage implements OnInit {
     const f = this.form;
     const num = (v: any) => (v === null || v === undefined || v === '' ? null : Number(v));
     const body: any = { name: f.name, category_id: f.category_id || null, sale_price: Number(f.sale_price || 0), description: f.description || undefined };
-    if (f.kind === 'servico') Object.assign(body, { duration_min: num(f.duration_min), commission_pct: num(f.commission_pct), return_days: num(f.return_days), service_code: f.service_code || null, ...(this.auth.can('produtos.custo') ? { cost_price: Number(f.cost_price || 0) } : {}) });
+    if (f.kind === 'servico') Object.assign(body, { duration_min: num(f.duration_min), commission_pct: num(f.commission_pct), return_days: num(f.return_days), ...(this.auth.has('oficina') ? { return_km: num(f.return_km) } : {}), service_code: f.service_code || null, ...(this.auth.can('produtos.custo') ? { cost_price: Number(f.cost_price || 0) } : {}) });
     else Object.assign(body, { package_service_id: f.package_service_id, package_sessions: num(f.package_sessions), package_validity_days: num(f.package_validity_days) });
     try {
       if (f.id) await this.api.put(`/services/${f.id}`, { ...body, active: !!f.active });

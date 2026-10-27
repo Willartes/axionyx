@@ -7,6 +7,7 @@ import { hashPassword, verifyPassword, signJwt, generateTotpSecret, verifyTotp, 
 import { unauthorized, forbidden, unprocessable, HttpError } from '../core/errors'
 import { getSettings } from '../services/settings'
 import { billingSummary } from '../services/billing'
+import { PLATFORM_KEYS } from '../core/platform'
 
 async function newSession(userId: string, stage: 'mfa' | 'context' | 'full', ctx: Ctx, opts: { companyId?: string; branchId?: string; minutes?: number } = {}) {
   const minutes = opts.minutes ?? (stage === 'full' ? config.sessionHours * 60 : 15)
@@ -17,7 +18,13 @@ async function newSession(userId: string, stage: 'mfa' | 'context' | 'full', ctx
   return { token, expiresAt: s.expires_at, stage }
 }
 
-async function companiesFor(userId: string, superadmin: boolean) {
+/** Superadministrador vê todas as empresas se for proprietário ou tiver "Acessar empresas clientes"; senão, só as vinculadas. */
+async function seesAllCompanies(userId: string): Promise<boolean> {
+  const u = await db.one(`SELECT is_superadmin, platform_owner, platform_permissions FROM users WHERE id = $1`, [userId])
+  return !!u?.is_superadmin && (u.platform_owner || (u.platform_permissions as string[]).includes('suporte.acessar'))
+}
+async function companiesFor(userId: string, _superadmin?: boolean) {
+  const superadmin = await seesAllCompanies(userId)
   return db.many(
     `SELECT c.id, c.name, c.trade_name, c.cnpj, c.color, c.is_demo, r.name AS role
        FROM companies c LEFT JOIN user_companies uc ON uc.company_id = c.id AND uc.user_id = $1 AND uc.active
@@ -69,7 +76,8 @@ router.get('/api/auth/companies', { auth: 'context' }, async (ctx) => companiesF
 
 router.get('/api/auth/companies/:id/branches', { auth: 'context' }, async (ctx) => {
   const uc = await db.one(`SELECT all_branches FROM user_companies WHERE user_id = $1 AND company_id = $2 AND active`, [ctx.user.id, ctx.params.id])
-  if (!uc && !ctx.user.isSuperadmin) throw forbidden('Sem acesso a esta empresa.')
+  const sees = ctx.user.isSuperadmin && (await seesAllCompanies(ctx.user.id))
+  if (!uc && !sees) throw forbidden('Sem acesso a esta empresa.')
   const all = ctx.user.isSuperadmin || uc?.all_branches
   return db.many(
     `SELECT b.id, b.code, b.name, b.cnpj, b.address FROM branches b
@@ -81,6 +89,7 @@ async function enterContext(ctx: Ctx, companyId: string, branchId: string) {
   const uc = await db.one(`SELECT uc.*, (SELECT true FROM user_branches ub WHERE ub.user_id = uc.user_id AND ub.branch_id = $3) AS has_branch
                              FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND uc.active`, [ctx.user.id, companyId, branchId])
   if (!ctx.user.isSuperadmin && (!uc || (!uc.all_branches && !uc.has_branch))) throw forbidden('Sem acesso a esta empresa/filial.')
+  if (ctx.user.isSuperadmin && !uc && !(await seesAllCompanies(ctx.user.id))) throw forbidden('Seu perfil na equipe não permite acessar empresas clientes.')
   if (ctx.user.isSuperadmin && !uc) {
     // superadministrador sem vínculo: vincula como Administrador para rastreabilidade
     const role = await db.one(`SELECT id FROM roles WHERE company_id = $1 AND name = 'Administrador'`, [companyId])
@@ -111,13 +120,14 @@ router.get('/api/auth/me', {}, async (ctx) => {
   const branch = await db.one(`SELECT id, code, name, cnpj FROM branches WHERE id = $1`, [u.branchId])
   const branches = await db.many(`SELECT id, code, name FROM branches WHERE company_id = $1 AND active ${u.allBranches ? '' : 'AND id = ANY($2::uuid[])'} ORDER BY code`,
     u.allBranches ? [u.companyId] : [u.companyId, u.branchIds])
-  const user = await db.one(`SELECT id, name, email, mfa_enabled, is_superadmin, last_login_at FROM users WHERE id = $1`, [u.id])
+  const user = await db.one(`SELECT id, name, email, mfa_enabled, is_superadmin, last_login_at, must_change_password, platform_title FROM users WHERE id = $1`, [u.id])
   const settings = await getSettings(db, u.companyId)
   return {
     user: { ...user, role: u.roleName, isSeller: u.isSeller, maxDiscountPct: u.maxDiscountPct, allBranches: u.allBranches },
     company, segment: segmentInfo(company?.segment), branch, branches, permissions: u.isSuperadmin ? ['*'] : [...u.permissions], settings,
     companies: await companiesFor(u.id, u.isSuperadmin),
     billing: u.billingStatus ? await billingSummary(u.companyId) : null,
+    platform: u.isSuperadmin ? { owner: u.platformOwner, permissions: u.platformOwner ? PLATFORM_KEYS : [...u.platformPerms], title: user?.platform_title ?? null } : null,
   }
 })
 
@@ -132,7 +142,8 @@ router.post('/api/auth/password', {}, async (ctx) => {
   const u = await db.one(`SELECT * FROM users WHERE id = $1`, [ctx.user.id])
   if (!verifyPassword(b.current, u.password_hash)) throw unprocessable('Senha atual incorreta.')
   const pol = passwordPolicy(b.next); if (pol) throw unprocessable(pol)
-  await db.query(`UPDATE users SET password_hash = $2, password_changed_at = now(), updated_at = now() WHERE id = $1`, [u.id, hashPassword(b.next)])
+  if (verifyPassword(b.next, u.password_hash)) throw unprocessable('A nova senha precisa ser diferente da atual.')
+  await db.query(`UPDATE users SET password_hash = $2, password_changed_at = now(), must_change_password = false, updated_at = now() WHERE id = $1`, [u.id, hashPassword(b.next)])
   await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL`, [u.id, ctx.user.sessionId])
   await audit(null, ctx, 'auth.senha_alterada', 'user', u.id, null, 'warning')
   return { ok: true }

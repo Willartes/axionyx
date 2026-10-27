@@ -20,7 +20,7 @@ const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
   template: `
   <div style="padding:24px">
     <div style="display:flex;justify-content:space-between;margin-bottom:20px"><div><h1 style="font-size:20px;font-weight:700;color:#172B3A">Empresas</h1><p style="font-size:13px;color:#647687">{{ companies().length }} empresa(s) acessível(is)</p></div>
-      @if (auth.me()?.user?.is_superadmin) { <button class="btn-primary" style="font-size:12px" (click)="newCo()"><ax-icon name="plus" [size]="13" /> Nova empresa</button> }</div>
+      @if (auth.pcan('empresas.criar')) { <button class="btn-primary" style="font-size:12px" (click)="newCo()"><ax-icon name="plus" [size]="13" /> Nova empresa</button> }</div>
     <ax-state [loading]="loading()" />
     <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px;margin-bottom:24px">
       @for (e of companies(); track e.id) {
@@ -49,7 +49,7 @@ const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
           <td><span class="badge" [class]="b.active === false ? 'badge badge-muted' : 'badge badge-success'">{{ b.active === false ? 'Inativa' : 'Ativa' }}</span></td>
           <td><button class="btn-ghost" style="font-size:11px" (click)="editBr(b)">Editar</button></td></tr> }</tbody></table>
     </div>
-    @if (auth.me()?.user?.is_superadmin) {
+    @if (auth.pcan('carteira.ver')) {
       <div class="card" style="overflow:hidden;margin-top:16px">
         <div style="padding:12px 16px;display:flex;align-items:center;gap:8px"><ax-icon name="inbox" [size]="15" color="#0875D1" /><div style="flex:1;font-size:13px;font-weight:600">Contatos do site (pedidos de demonstração)</div><span class="muted" style="font-size:12px">{{ leads().length }} contato(s)</span></div>
         @if (leads().length) {
@@ -57,7 +57,7 @@ const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
             <tbody>@for (l of leads(); track l.id) { <tr><td class="mono" style="font-size:11px">{{ l.created_at | dtt }}</td><td style="font-weight:500">{{ l.name }}</td><td style="font-size:12px">{{ l.email || '' }}@if (l.phone) { <div>{{ l.phone | phone }}</div> }</td>
               <td style="font-size:12px">{{ l.company_name || '—' }}</td><td style="font-size:12px">{{ l.segment || '—' }}</td><td style="font-size:12px">{{ l.stores || '—' }}</td><td style="font-size:12px;max-width:280px">{{ l.message || '—' }}</td>
               <td><select class="input-field" style="font-size:12px;padding:3px 6px" [value]="l.status" (change)="leadStatus(l, $any($event.target).value)"><option value="novo">Novo</option><option value="em_contato">Em contato</option><option value="convertido">Convertido</option><option value="descartado">Descartado</option></select></td>
-              <td><button class="btn-ghost" style="font-size:11px;white-space:nowrap" (click)="router.navigate(['/saas-clientes'], { queryParams: { lead: l.id } })"><ax-icon name="clipboard-list" [size]="11" /> Criar proposta</button></td></tr> }</tbody></table></div>
+              <td>@if (auth.pcan('carteira.propostas')) { <button class="btn-ghost" style="font-size:11px;white-space:nowrap" (click)="router.navigate(['/saas-clientes'], { queryParams: { lead: l.id } })"><ax-icon name="clipboard-list" [size]="11" /> Criar proposta</button> }</td></tr> }</tbody></table></div>
         } @else { <div class="empty-state" style="padding:20px">Nenhum contato recebido pelo site ainda.</div> }
       </div>
     }
@@ -118,7 +118,7 @@ export class AdminEmpresasPage implements OnInit {
   readonly companies = signal<any[]>([]); readonly branches = signal<any[]>([]); readonly loading = signal(true);
   readonly coOpen = signal(false); readonly brOpen = signal(false); co: any = { address: {} }; br: any = { address: {} };
   readonly segments = signal<any[]>([]); readonly leads = signal<any[]>([]);
-  ngOnInit() { this.load(); this.api.get<any>('/segments').then((r) => this.segments.set(r.segments), () => {}); if (this.auth.me()?.user?.is_superadmin) this.loadLeads(); }
+  ngOnInit() { this.load(); this.api.get<any>('/segments').then((r) => this.segments.set(r.segments), () => {}); if (this.auth.pcan('carteira.ver')) this.loadLeads(); }
   async loadLeads() { try { this.leads.set((await this.api.get<any>('/admin/leads', { size: 100 })).items); } catch { /* sem permissão */ } }
   async leadStatus(l: any, status: string) { try { await this.api.put('/admin/leads/' + l.id, { status }); this.loadLeads(); } catch (e) { this.toast.error(e); } }
   async load() { this.loading.set(true); try { const [c, b] = await Promise.all([this.api.get<any[]>('/admin/companies'), this.api.get<any[]>('/admin/branches')]); this.companies.set(c); this.branches.set(b); } finally { this.loading.set(false); } }

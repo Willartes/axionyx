@@ -1,15 +1,16 @@
 /** Estrutura do menu lateral (mesmas seções do AXIONYX original + itens de varejo de moda). */
-export interface NavItem { id: string; label: string; icon: string; perm?: string | string[]; badgeKey?: string; alertKey?: string; isNew?: boolean; /** só superadministrador */ sa?: boolean; /** só empresas com contrato de assinatura */ billing?: boolean }
+export interface NavItem { id: string; label: string; icon: string; perm?: string | string[]; badgeKey?: string; alertKey?: string; isNew?: boolean; /** só equipe da plataforma com esta permissão */ sa?: string; /** só empresas com contrato de assinatura */ billing?: boolean }
 export interface NavSection { title: string; items: NavItem[] }
 
 export const NAV: NavSection[] = [
   { title: 'MINHA CARTEIRA AXIONYX', items: [
-    { id: 'saas-carteira', label: 'Painel da Carteira', icon: 'bar-chart-3', sa: true },
-    { id: 'saas-clientes', label: 'Clientes e Contratos', icon: 'building-2', sa: true, badgeKey: 'saas_proposals' },
-    { id: 'saas-auditoria', label: 'Fila de Auditoria', icon: 'shield-check', sa: true, badgeKey: 'saas_reviews', alertKey: 'saas_reviews_high' },
-    { id: 'saas-cobrancas', label: 'Cobranças', icon: 'receipt', sa: true },
-    { id: 'saas-planos', label: 'Planos', icon: 'tag', sa: true },
-    { id: 'saas-gateway', label: 'Mercado Pago', icon: 'credit-card', sa: true },
+    { id: 'saas-carteira', label: 'Painel da Carteira', icon: 'bar-chart-3', sa: 'carteira.ver' },
+    { id: 'saas-clientes', label: 'Clientes e Contratos', icon: 'building-2', sa: 'carteira.ver', badgeKey: 'saas_proposals' },
+    { id: 'saas-auditoria', label: 'Fila de Auditoria', icon: 'shield-check', sa: 'carteira.ver', badgeKey: 'saas_reviews', alertKey: 'saas_reviews_high' },
+    { id: 'saas-cobrancas', label: 'Cobranças', icon: 'receipt', sa: 'carteira.ver' },
+    { id: 'saas-planos', label: 'Planos', icon: 'tag', sa: 'carteira.ver' },
+    { id: 'saas-gateway', label: 'Mercado Pago', icon: 'credit-card', sa: 'carteira.ver' },
+    { id: 'plataforma-equipe', label: 'Equipe da Plataforma', icon: 'user-cog', sa: 'plataforma.equipe' },
   ]},
   { title: 'CORE', items: [
     { id: 'admin-empresas', label: 'Empresas', icon: 'building-2', perm: 'admin.empresas' },
@@ -22,6 +23,8 @@ export const NAV: NavSection[] = [
     { id: 'crm', label: 'CRM', icon: 'user-check', perm: 'crm.ver' },
     { id: 'pedidos', label: 'Vendas', icon: 'shopping-cart', perm: 'vendas.ver', badgeKey: 'quotes_open' },
     { id: 'agenda', label: 'Agenda', icon: 'calendar-days', perm: 'agenda.ver', badgeKey: 'appointments_today', isNew: true },
+    { id: 'oficina', label: 'Ordens de Serviço', icon: 'wrench', perm: 'oficina.ver', badgeKey: 'wo_open', alertKey: 'wo_late', isNew: true },
+    { id: 'veiculos', label: 'Veículos', icon: 'car', perm: 'oficina.ver', isNew: true },
     { id: 'pdv', label: 'PDV — Frente de Caixa', icon: 'scan-barcode', perm: 'vendas.criar' },
     { id: 'servicos', label: 'Serviços e Pacotes', icon: 'scissors', perm: ['produtos.ver', 'agenda.ver'], isNew: true },
     { id: 'profissionais', label: 'Profissionais e Comissões', icon: 'user-cog', perm: ['profissionais.editar', 'comissoes.ver', 'agenda.ver'], isNew: true },
@@ -43,6 +46,7 @@ export const NAV: NavSection[] = [
   ]},
   { title: 'INTELLIGENCE', items: [
     { id: 'intelligence', label: 'Central de IA', icon: 'brain', perm: 'dashboard.ver' },
+    { id: 'oficina-painel', label: 'Painel da Oficina', icon: 'gauge', perm: 'oficina.ver', isNew: true },
     { id: 'inteligencia-servicos', label: 'Inteligência de Serviços', icon: 'activity', perm: ['dashboard.ver', 'agenda.ver'], isNew: true },
     { id: 'forecast', label: 'Previsão de Demanda', icon: 'trending-up', perm: 'dashboard.ver' },
     { id: 'estoque-inteligente', label: 'Estoque Inteligente', icon: 'flask-conical', perm: 'estoque.ver' },
@@ -75,7 +79,7 @@ export const TITLES: Record<string, string[]> = {
   crm: ['CRM', 'Pipeline'],
   pedidos: ['Vendas', 'Pedidos'], 'pedido-detail': ['Vendas', 'Pedidos', 'Venda'], orcamentos: ['Vendas', 'Orçamentos'], trocas: ['Vendas', 'Trocas e Devoluções'],
   agenda: ['Agenda'], servicos: ['Cadastros', 'Serviços e Pacotes'], profissionais: ['Agenda', 'Profissionais e Comissões'], 'planos-tratamento': ['Atendimento', 'Planos de Tratamento'],
-  ficha: ['Atendimento', 'Ficha do Cliente'], 'inteligencia-servicos': ['Intelligence', 'Inteligência de Serviços'],
+  ficha: ['Atendimento', 'Ficha do Cliente'], oficina: ['Oficina', 'Ordens de Serviço'], 'os-detail': ['Oficina', 'Ordens de Serviço', 'OS'], veiculos: ['Oficina', 'Veículos'], 'oficina-painel': ['Intelligence', 'Painel da Oficina'], 'inteligencia-servicos': ['Intelligence', 'Inteligência de Serviços'],
   pdv: ['Vendas', 'PDV — Frente de Caixa'], caixa: ['Vendas', 'Caixa'], comissoes: ['Vendas', 'Metas e Comissões'],
   condicionais: ['Condicional e Bag'], 'condicional-detail': ['Condicional e Bag', 'Detalhes'], consignacoes: ['Consignação'], 'consignacao-detail': ['Consignação', 'Detalhes'],
   compras: ['Compras', 'Dashboard'], 'mapa-cotacao': ['Compras', 'Cotações', 'Mapa Comparativo'], 'pedidos-compra': ['Compras', 'Pedidos'], recebimentos: ['Compras', 'Entradas de Mercadoria'],
@@ -96,7 +100,7 @@ export const TITLES: Record<string, string[]> = {
   relatorios: ['Relatórios'], documentos: ['Documentos'], integracoes: ['Platform', 'Integrações'], whatsapp: ['Platform', 'Integrações', 'WhatsApp da empresa'], mensagens: ['Platform', 'Mensagens'], monitoramento: ['Platform', 'Monitoramento'], backup: ['Platform', 'Backup'],
   'admin-empresas': ['Administração', 'Empresas'], 'admin-usuarios': ['Administração', 'Usuários'], 'admin-permissoes': ['Administração', 'Permissões'], 'admin-modulos': ['Administração', 'Módulos'],
   'saas-carteira': ['Minha Carteira', 'Painel'], 'saas-clientes': ['Minha Carteira', 'Clientes e Contratos'], 'saas-auditoria': ['Minha Carteira', 'Auditoria de Assinaturas'],
-  'saas-cobrancas': ['Minha Carteira', 'Cobranças'], 'saas-planos': ['Minha Carteira', 'Planos'], 'saas-gateway': ['Minha Carteira', 'Mercado Pago'], 'minha-assinatura': ['Minha assinatura'],
+  'saas-cobrancas': ['Minha Carteira', 'Cobranças'], 'saas-planos': ['Minha Carteira', 'Planos'], 'saas-gateway': ['Minha Carteira', 'Mercado Pago'], 'plataforma-equipe': ['Minha Carteira', 'Equipe da Plataforma'], 'minha-assinatura': ['Minha assinatura'],
   auditoria: ['Auditoria'], configuracoes: ['Configurações'], logs: ['Logs do Sistema'], 'sem-permissao': ['Acesso negado'],
 };
 

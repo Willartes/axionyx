@@ -1,4 +1,5 @@
 import { router, audit, paged, Where, rateLimit, r2 } from '../core/http'
+import { requirePlatform } from '../core/platform'
 import { db, tx } from '../core/db'
 import { v, parse, onlyDigits, isValidGTIN } from '../core/validate'
 import { notFound, unprocessable, forbidden, conflict } from '../core/errors'
@@ -273,13 +274,13 @@ router.post('/api/public/leads', { auth: 'none', maxBody: 20_000 }, async (ctx) 
 })
 
 router.get('/api/admin/leads', { perm: 'admin.empresas' }, async (ctx) => {
-  if (!ctx.user.isSuperadmin) throw forbidden('Somente o superadministrador vê os contatos do site.')
+  requirePlatform(ctx, 'carteira.ver')
   const w = new Where()
   w.addIf(ctx.query.status, 'status = ?', ctx.query.status)
   return paged(db, `SELECT * FROM site_leads ${w.sql} ORDER BY created_at DESC`, w.params, ctx.query, 50)
 })
 router.put('/api/admin/leads/:id', { perm: 'admin.empresas' }, async (ctx) => {
-  if (!ctx.user.isSuperadmin) throw forbidden()
+  requirePlatform(ctx, 'carteira.propostas')
   const b: any = parse(v.object({ status: v.enum(['novo', 'em_contato', 'convertido', 'descartado'] as const), notes: v.string({ max: 2000 }).optional() }), ctx.body)
   const r = await db.one(`UPDATE site_leads SET status = $2, notes = COALESCE($3, notes), updated_at = now() WHERE id = $1 RETURNING *`, [ctx.params.id, b.status, b.notes ?? null])
   if (!r) throw notFound('Contato')

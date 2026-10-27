@@ -5,6 +5,7 @@ import { IconComponent } from '../../shared/icon.component';
 import { ModalComponent, PagerComponent, StateComponent } from '../../shared/ui';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
+import { AuthService } from '../../core/auth.service';
 import { FMT, brl } from '../../core/format';
 import { CHARGE_STATUS, CONTRACT_STATUS, METHOD_LABEL, MODE_LABEL, MODE_SHORT, REVIEW_KIND, RISK, SEGMENT_LABEL, SEVERITY, copyText } from './saas-shared';
 
@@ -39,8 +40,10 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
       <div><h1 style="font-size:20px;font-weight:700;color:#172B3A">Clientes e Contratos</h1>
         <p style="font-size:13px;color:#647687">Proposta → auditoria → aprovação (cria a empresa) → pagamento libera o acesso → renovação automática</p></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-secondary" (click)="openLink()"><ax-icon name="building-2" [size]="13" /> Vincular cliente existente</button>
-        <button class="btn-primary" (click)="openNew()"><ax-icon name="plus" [size]="13" /> Nova proposta</button>
+        @if (pc('carteira.propostas')) {
+          <button class="btn-secondary" (click)="openLink()"><ax-icon name="building-2" [size]="13" /> Vincular cliente existente</button>
+          <button class="btn-primary" (click)="openNew()"><ax-icon name="plus" [size]="13" /> Nova proposta</button>
+        }
       </div>
     </div>
     <div class="bar">
@@ -133,22 +136,27 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
       <div class="acts">
         @switch (k.status) {
           @case ('em_analise') {
-            <button class="btn-primary" (click)="approveOpen()"><ax-icon name="check-circle-2" [size]="13" /> Aprovar</button>
-            <button class="btn-secondary" style="color:#C93636" (click)="ask('reject')"><ax-icon name="x-circle" [size]="13" /> Recusar</button>
-            <button class="btn-secondary" (click)="reRisk()"><ax-icon name="refresh-cw" [size]="13" /> Reavaliar risco</button>
+            @if (pc('carteira.aprovar')) {
+              <button class="btn-primary" (click)="approveOpen()"><ax-icon name="check-circle-2" [size]="13" /> Aprovar</button>
+              <button class="btn-secondary" style="color:#C93636" (click)="ask('reject')"><ax-icon name="x-circle" [size]="13" /> Recusar</button>
+            }
+            @if (pc('carteira.propostas')) { <button class="btn-secondary" (click)="reRisk()"><ax-icon name="refresh-cw" [size]="13" /> Reavaliar risco</button> }
           }
-          @case ('aguardando_pagamento') { <button class="btn-secondary" style="color:#C93636" (click)="ask('cancel')">Cancelar contrato</button> }
-          @case ('suspenso') { <button class="btn-primary" (click)="ask('reactivate')">Reativar acesso</button><button class="btn-secondary" style="color:#C93636" (click)="ask('cancel')">Cancelar contrato</button> }
-          @case ('cancelado') { <button class="btn-secondary" (click)="ask('reactivate')">Reativar</button> }
+          @case ('aguardando_pagamento') { @if (pc('carteira.financeiro')) { <button class="btn-secondary" style="color:#C93636" (click)="ask('cancel')">Cancelar contrato</button> } }
+          @case ('suspenso') { @if (pc('carteira.financeiro')) { <button class="btn-primary" (click)="ask('reactivate')">Reativar acesso</button><button class="btn-secondary" style="color:#C93636" (click)="ask('cancel')">Cancelar contrato</button> } }
+          @case ('cancelado') { @if (pc('carteira.financeiro')) { <button class="btn-secondary" (click)="ask('reactivate')">Reativar</button> } }
           @case ('recusado') { <span class="muted" style="font-size:12.5px">Proposta recusada: {{ k.review_note }}</span> }
           @default {
-            <button class="btn-secondary" (click)="chargeOpen()"><ax-icon name="plus" [size]="13" /> Nova cobrança</button>
-            <button class="btn-secondary" (click)="ask('suspend')"><ax-icon name="lock" [size]="13" /> Suspender</button>
-            @if (k.status === 'inadimplente') { <button class="btn-secondary" (click)="ask('reactivate')">Dar cortesia (reativar)</button> }
-            <button class="btn-secondary" style="color:#C93636" (click)="ask('cancel')">Cancelar contrato</button>
+            @if (pc('carteira.financeiro')) {
+              <button class="btn-secondary" (click)="chargeOpen()"><ax-icon name="plus" [size]="13" /> Nova cobrança</button>
+              <button class="btn-secondary" (click)="ask('suspend')"><ax-icon name="lock" [size]="13" /> Suspender</button>
+              @if (k.status === 'inadimplente') { <button class="btn-secondary" (click)="ask('reactivate')">Dar cortesia (reativar)</button> }
+              <button class="btn-secondary" style="color:#C93636" (click)="ask('cancel')">Cancelar contrato</button>
+            }
           }
         }
-        @if (!['recusado'].includes(k.status)) { <button class="btn-ghost" (click)="editOpen()"><ax-icon name="pencil" [size]="13" /> Editar condições</button> }
+        @if (!['recusado'].includes(k.status) && pc('carteira.propostas')) { <button class="btn-ghost" (click)="editOpen()"><ax-icon name="pencil" [size]="13" /> Editar condições</button> }
+        @if (!pc('carteira.propostas') && !pc('carteira.financeiro') && !pc('carteira.aprovar')) { <span class="muted" style="font-size:12.5px"><ax-icon name="eye" [size]="12" /> Seu perfil é somente leitura na carteira.</span> }
       </div>
       @if (k.status === 'em_analise' || k.risk_flags?.length) {
         <div class="sec">Análise de risco automática</div>
@@ -194,13 +202,13 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
               <td><span class="badge" [class]="'badge ' + cs(c.status).cls">{{ cs(c.status).label }}</span>@if (c.attempts) { <div class="muted" style="font-size:10.5px">{{ c.attempts }} tentativa(s) recusada(s)</div> }</td>
               <td style="font-size:11.5px">@if (c.paid_at) { {{ c.paid_at | dtt }} · {{ method(c.method) }}{{ c.payer_name ? ' · ' + c.payer_name : '' }}@if (c.manual_note && c.kind !== 'avulsa') { <div class="muted">{{ c.manual_note }}</div> } } @else { {{ c.last_status_detail || '—' }} }</td>
               <td style="white-space:nowrap">
-                @if (c.status === 'pendente') {
+                @if (c.status === 'pendente' && pc('carteira.financeiro')) {
                   @if (c.checkout_url) { <button class="btn-ghost" style="font-size:11px" (click)="copy(c.checkout_url)" title="Copiar link de pagamento"><ax-icon name="copy" [size]="12" /> Link</button> }
                   @else if (k.billing_mode === 'link_mensal') { <button class="btn-ghost" style="font-size:11px" (click)="genLink(c)">Gerar link</button> }
                   <button class="btn-ghost" style="font-size:11px" (click)="manualOpen(c)">Baixa manual</button>
                   <button class="btn-ghost" style="font-size:11px;color:#C93636" (click)="ask('cancelCharge', c)">Cancelar</button>
                 }
-                @if (c.status === 'paga') { <button class="btn-ghost" style="font-size:11px;color:#C93636" (click)="ask('refund', c)">Estornar</button> }
+                @if (c.status === 'paga' && pc('carteira.financeiro')) { <button class="btn-ghost" style="font-size:11px;color:#C93636" (click)="ask('refund', c)">Estornar</button> }
               </td></tr>
           }</tbody></table></div>
       } @else { <div class="muted" style="font-size:12.5px">Nenhuma cobrança ainda.</div> }
@@ -294,7 +302,8 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
   </ax-modal>`,
 })
 export class SaasClientesPage implements OnInit {
-  private api = inject(Api); private toast = inject(ToastService); readonly router = inject(Router); private route = inject(ActivatedRoute);
+  private api = inject(Api); private toast = inject(ToastService); readonly router = inject(Router); private route = inject(ActivatedRoute); private authSvc = inject(AuthService);
+  readonly pc = (p: string) => this.authSvc.pcan(p);
   readonly items = signal<any[]>([]); readonly loading = signal(true); readonly page = signal(1); readonly pages = signal(1); readonly total = signal(0);
   readonly status = signal(''); q = '';
   readonly plans = signal<any[]>([]); readonly legacy = signal<any[]>([]); readonly busy = signal(false);

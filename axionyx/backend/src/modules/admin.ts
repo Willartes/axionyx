@@ -7,6 +7,7 @@ import { hashPassword, passwordPolicy, randomCode } from '../core/crypto'
 import { PERMISSIONS, ALL_PERMISSIONS } from '../core/permissions'
 import { bootstrapCompany } from '../services/bootstrap'
 import { getSettings, sanitizeSettings } from '../services/settings'
+import { requirePlatform } from '../core/platform'
 
 const address = v.object({ cep: v.string().optional(), logradouro: v.string().optional(), numero: v.string().optional(), complemento: v.string().optional(),
   bairro: v.string().optional(), cidade: v.string().optional(), uf: v.string({ max: 2 }).optional(), codigoMunicipio: v.string({ max: 7 }).optional() }).optional()
@@ -20,10 +21,10 @@ router.get('/api/admin/companies', { perm: 'admin.empresas' }, async (ctx) => {
 })
 
 router.post('/api/admin/companies', { perm: 'admin.empresas' }, async (ctx) => {
-  if (!ctx.user.isSuperadmin) throw forbidden('Somente o superadministrador pode criar empresas.')
+  requirePlatform(ctx, 'empresas.criar')
   const b = parse(v.object({ name: v.string({ min: 2, max: 150 }), tradeName: v.string({ max: 100 }).optional(), cnpj: v.string().optional(), ie: v.string().optional(),
     taxRegime: v.enum(['simples', 'presumido', 'real', 'mei'] as const).default('simples'), address, branchName: v.string({ min: 2 }).default('Matriz'),
-    segment: v.enum(['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'geral'] as const).default('moda') }), ctx.body)
+    segment: v.enum(['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'oficina', 'geral'] as const).default('moda') }), ctx.body)
   if (b.cnpj && !isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.')
   return tx(async (c) => {
     const r = await bootstrapCompany(c, { name: b.name, tradeName: b.tradeName, cnpj: b.cnpj ? onlyDigits(b.cnpj) : null, ie: b.ie, taxRegime: b.taxRegime, crt: b.taxRegime === 'simples' || b.taxRegime === 'mei' ? 1 : 3,
@@ -123,7 +124,7 @@ router.post('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
       const linked = await c.one(`SELECT 1 FROM user_companies WHERE user_id = $1 AND company_id = $2`, [u.id, ctx.user.companyId])
       if (linked) throw conflict('Usuário já vinculado a esta empresa.')
     } else {
-      u = await c.one(`INSERT INTO users(name, email, password_hash) VALUES ($1,$2,$3) RETURNING id`, [b.name, b.email, hashPassword(temp)])
+      u = await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,$4) RETURNING id`, [b.name, b.email, hashPassword(temp), !b.password])
     }
     await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches, is_seller, commission_pct) VALUES ($1,$2,$3,$4,$5,$6)`,
       [u.id, ctx.user.companyId, b.roleId, b.allBranches, b.isSeller, b.commissionPct ?? null])
@@ -137,7 +138,7 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
   const partial: any = {}; for (const [k, s] of Object.entries(userSchema)) partial[k] = (s as any).optional()
   const b: any = parse(v.object({ ...partial, active: v.boolean().optional() }), ctx.body)
   return tx(async (c) => {
-    const uc = await c.one(`SELECT * FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND ($3 OR NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)) FOR UPDATE`, [ctx.params.id, ctx.user.companyId, ctx.user.isSuperadmin])
+    const uc = await c.one(`SELECT * FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin) FOR UPDATE`, [ctx.params.id, ctx.user.companyId])
     if (!uc) throw notFound('Usuário')
     if (ctx.params.id === ctx.user.id && (b.active === false || (b.roleId && b.roleId !== uc.role_id))) throw unprocessable('Você não pode desativar ou alterar o próprio perfil.')
     if (b.name) await c.query(`UPDATE users SET name = $2, updated_at = now() WHERE id = $1`, [ctx.params.id, b.name])
@@ -153,17 +154,17 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
 })
 
 router.post('/api/admin/users/:id/reset-password', { perm: 'admin.usuarios' }, async (ctx) => {
-  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND ($3 OR NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin))`, [ctx.params.id, ctx.user.companyId, ctx.user.isSuperadmin])
+  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)`, [ctx.params.id, ctx.user.companyId])
   if (!linked) throw notFound('Usuário')
   const temp = `Ax${randomCode(6)}${Math.floor(Math.random() * 90 + 10)}`
-  await db.query(`UPDATE users SET password_hash = $2, failed_attempts = 0, locked_until = NULL, password_changed_at = now() WHERE id = $1`, [ctx.params.id, hashPassword(temp)])
+  await db.query(`UPDATE users SET password_hash = $2, failed_attempts = 0, locked_until = NULL, password_changed_at = now(), must_change_password = true WHERE id = $1`, [ctx.params.id, hashPassword(temp)])
   await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [ctx.params.id])
   await audit(null, ctx, 'usuario.senha_redefinida', 'user', ctx.params.id, null, 'critical')
   return { temporaryPassword: temp }
 })
 
 router.post('/api/admin/users/:id/reset-mfa', { perm: 'admin.usuarios' }, async (ctx) => {
-  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND ($3 OR NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin))`, [ctx.params.id, ctx.user.companyId, ctx.user.isSuperadmin])
+  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)`, [ctx.params.id, ctx.user.companyId])
   if (!linked) throw notFound('Usuário')
   await db.query(`UPDATE users SET mfa_enabled = false, mfa_secret = NULL WHERE id = $1`, [ctx.params.id])
   await audit(null, ctx, 'usuario.mfa_redefinido', 'user', ctx.params.id, null, 'critical')

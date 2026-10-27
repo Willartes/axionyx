@@ -6,6 +6,7 @@ import { ModalComponent, PagerComponent, StateComponent } from '../../shared/ui'
 import { CHARTS, Series } from '../../shared/charts';
 import { Api } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
+import { AuthService } from '../../core/auth.service';
 import { FMT, brl } from '../../core/format';
 import { CHARGE_STATUS, CONTRACT_STATUS, METHOD_LABEL, MODE_SHORT, REVIEW_KIND, RISK, SEGMENT_LABEL, SEVERITY, copyText } from './saas-shared';
 
@@ -30,8 +31,8 @@ const PALETTE = ['#0875D1', '#00A6D6', '#18864B', '#D99000', '#7A5AF8', '#C93636
       <div><h1 style="font-size:20px;font-weight:700;color:#172B3A;display:flex;gap:8px;align-items:center"><ax-icon name="axionyx" [size]="20" color="#0875D1" /> Painel da Carteira</h1>
         <p style="font-size:13px;color:#647687">Clientes, receita recorrente e saúde da carteira do AXIONYX — valores reais das assinaturas e cobranças</p></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn-secondary" (click)="run()" [disabled]="running()"><ax-icon name="refresh-cw" [size]="13" /> Rodar cobrança agora</button>
-        <button class="btn-primary" (click)="router.navigate(['/saas-clientes'], { queryParams: { novo: 1 } })"><ax-icon name="plus" [size]="13" /> Nova proposta</button>
+        @if (pc('carteira.financeiro')) { <button class="btn-secondary" (click)="run()" [disabled]="running()"><ax-icon name="refresh-cw" [size]="13" /> Rodar cobrança agora</button> }
+        @if (pc('carteira.propostas')) { <button class="btn-primary" (click)="router.navigate(['/saas-clientes'], { queryParams: { novo: 1 } })"><ax-icon name="plus" [size]="13" /> Nova proposta</button> }
       </div>
     </div>
     @if (d(); as d) {
@@ -87,6 +88,7 @@ const PALETTE = ['#0875D1', '#00A6D6', '#18864B', '#D99000', '#7A5AF8', '#C93636
   </div>`,
 })
 export class SaasCarteiraPage implements OnInit {
+  readonly pc = (p: string) => this.authSvc.pcan(p); private authSvc = inject(AuthService);
   private api = inject(Api); private toast = inject(ToastService); readonly router = inject(Router);
   readonly d = signal<any>(null); readonly running = signal(false);
   readonly today = new Date().toISOString().slice(0, 10);
@@ -162,8 +164,10 @@ export class SaasCarteiraPage implements OnInit {
           <div class="acts">
             <button class="btn-secondary" style="font-size:12px" (click)="open(r)">Abrir contrato</button>
             @if (r.status === 'aberta') {
-              @if (r.kind === 'novo_contrato') { <button class="btn-primary" style="font-size:12px" (click)="open(r)">Auditar proposta</button> }
-              @else { <button class="btn-primary" style="font-size:12px" (click)="resolveOpen(r)">Resolver</button> }
+              @if (pc('carteira.aprovar')) {
+                @if (r.kind === 'novo_contrato') { <button class="btn-primary" style="font-size:12px" (click)="open(r)">Auditar proposta</button> }
+                @else { <button class="btn-primary" style="font-size:12px" (click)="resolveOpen(r)">Resolver</button> }
+              }
             }
           </div>
         </div>
@@ -187,6 +191,7 @@ export class SaasCarteiraPage implements OnInit {
   </ax-modal>`,
 })
 export class SaasAuditoriaPage implements OnInit {
+  readonly pc = (p: string) => this.authSvc.pcan(p); private authSvc = inject(AuthService);
   private api = inject(Api); private toast = inject(ToastService); private router = inject(Router);
   readonly items = signal<any[]>([]); readonly loading = signal(true); readonly page = signal(1); readonly pages = signal(1);
   readonly status = signal('aberta'); readonly kind = signal('');
@@ -294,7 +299,7 @@ export class SaasCobrancasPage implements OnInit {
   <div style="padding:24px">
     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
       <div><h1 style="font-size:20px;font-weight:700;color:#172B3A">Planos</h1><p style="font-size:13px;color:#647687">Planos comerciais do AXIONYX. O valor de cada contrato pode ser negociado; mudar o plano não altera contratos já fechados.</p></div>
-      <button class="btn-primary" (click)="edit(null)"><ax-icon name="plus" [size]="13" /> Novo plano</button>
+      @if (pc('carteira.configurar')) { <button class="btn-primary" (click)="edit(null)"><ax-icon name="plus" [size]="13" /> Novo plano</button> }
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">
       @for (p of plans(); track p.id) {
@@ -303,7 +308,7 @@ export class SaasCobrancasPage implements OnInit {
           <div style="font-size:26px;font-weight:800;color:#0875D1">{{ p.price_monthly | brl }}<span style="font-size:12px;font-weight:500;color:#647687">/mês</span></div>
           <div class="muted" style="font-size:12.5px;min-height:34px">{{ p.description || '—' }}</div>
           <div style="font-size:12px;display:flex;gap:12px;flex-wrap:wrap"><span><ax-icon name="users" [size]="12" /> {{ p.max_users ? 'até ' + p.max_users + ' usuários' : 'usuários ilimitados' }}</span><span><ax-icon name="store" [size]="12" /> {{ p.max_branches ? 'até ' + p.max_branches + ' filiais' : 'filiais ilimitadas' }}</span></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><span style="font-size:12px"><b>{{ p.clients }}</b> cliente(s) ativo(s)</span><button class="btn-secondary" style="font-size:12px" (click)="edit(p)">Editar</button></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><span style="font-size:12px"><b>{{ p.clients }}</b> cliente(s) ativo(s)</span>@if (pc('carteira.configurar')) { <button class="btn-secondary" style="font-size:12px" (click)="edit(p)">Editar</button> }</div>
         </div>
       } @empty { <div class="card empty-state" style="padding:28px;grid-column:1/-1">Cadastre o primeiro plano para usar nas propostas.</div> }
     </div>
@@ -321,6 +326,7 @@ export class SaasCobrancasPage implements OnInit {
   </ax-modal>`,
 })
 export class SaasPlanosPage implements OnInit {
+  readonly pc = (p: string) => this.authSvc.pcan(p); private authSvc = inject(AuthService);
   private api = inject(Api); private toast = inject(ToastService);
   readonly plans = signal<any[]>([]); readonly open = signal(false); f: any = {};
   ngOnInit() { this.load(); }
@@ -356,7 +362,7 @@ export class SaasPlanosPage implements OnInit {
             <div class="chk"><ax-icon [name]="c[1] ? 'check-circle-2' : 'x-circle'" [size]="16" [color]="c[1] ? '#18864B' : '#C93636'" /><div style="flex:1"><b>{{ c[0] }}</b><div class="muted" style="font-size:12px">{{ c[2] }}</div></div></div>
           }
           <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-            <button class="btn-primary" (click)="test()" [disabled]="!g.configured || testing()"><ax-icon name="plug" [size]="13" /> Testar conexão</button>
+            <button class="btn-primary" (click)="test()" [disabled]="!g.configured || testing() || !pc('carteira.configurar')"><ax-icon name="plug" [size]="13" /> Testar conexão</button>
             @if (acct()) { <span style="font-size:12.5px;align-self:center;color:#18864B">Conectado: conta {{ acct().nickname || acct().id }} ({{ acct().live ? 'produção' : 'teste' }})</span> }
           </div>
         </div>
@@ -390,13 +396,14 @@ export class SaasPlanosPage implements OnInit {
               <td style="font-size:12px">{{ e.live_mode === null ? '—' : e.live_mode ? 'produção' : 'teste' }}</td>
               <td><span class="badge" [class]="e.status === 'processado' ? 'badge badge-success' : e.status === 'erro' ? 'badge badge-danger' : 'badge badge-muted'">{{ e.status }}</span></td>
               <td style="font-size:11.5px;max-width:260px">{{ e.error || '' }}</td>
-              <td>@if (e.signature_ok && e.status === 'erro') { <button class="btn-ghost" style="font-size:11px" (click)="reprocess(e)">Reprocessar</button> }</td></tr>
+              <td>@if (e.signature_ok && e.status === 'erro' && pc('carteira.configurar')) { <button class="btn-ghost" style="font-size:11px" (click)="reprocess(e)">Reprocessar</button> }</td></tr>
           } @empty { <tr><td colspan="8"><div class="empty-state">Nenhuma notificação recebida ainda.</div></td></tr> }</tbody></table></div>
       </div>
     }
   </div>`,
 })
 export class SaasGatewayPage implements OnInit {
+  readonly pc = (p: string) => this.authSvc.pcan(p); private authSvc = inject(AuthService);
   private api = inject(Api); private toast = inject(ToastService);
   readonly g = signal<any>(null); readonly acct = signal<any>(null); readonly testing = signal(false);
   readonly checks = computed<[string, boolean, string][]>(() => {

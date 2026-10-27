@@ -236,3 +236,24 @@ Cabeçalho do site com a marca em destaque à esquerda e o menu hambúrguer à d
 - **Minha assinatura** para o cliente: situação, botão de pagamento (Pix ou cartão) e histórico; avisos de vencimento e modo somente consulta quando suspenso.
 - Mercado Pago: Checkout Pro (link mensal Pix/cartão) e assinatura recorrente no cartão; webhook com assinatura HMAC verificada, consulta do pagamento na API, idempotência e conciliação horária.
 - Migração `012_assinaturas.sql` só acrescenta tabelas: empresas existentes continuam funcionando sem cobrança até serem vinculadas.
+
+### 1.7.0 — Equipe da plataforma (superadministradores com permissões)
+- **Equipe da Plataforma** (Minha Carteira › Equipe): o proprietário cadastra agentes operacionais com permissões: acessar empresas clientes (somente consulta), alterar dados nas empresas, criar empresas, ver carteira, propostas, auditar, financeiro da carteira, planos/Mercado Pago e gerenciar a equipe. Modelos rápidos: Suporte (consulta), Suporte completo, Comercial, Financeiro e Auditor.
+- Regras de segurança: ninguém concede permissão que não tem; só proprietário cria/altera proprietário; ninguém altera o próprio acesso; sempre resta um proprietário ativo; alteração de acesso derruba as sessões do membro; contas de superadministrador não podem ser alteradas pelas telas de usuários das empresas. Atividade de cada membro consultável.
+- Agente sem "Acessar empresas clientes" só entra na empresa base; sem "Alterar dados", fica somente consulta dentro das empresas.
+- **Senha temporária obrigatória de trocar** no primeiro acesso (membros da equipe, administrador criado na aprovação de proposta e usuários criados/redefinidos com senha gerada). A troca da própria senha fica no menu do nome › Minha senha e segurança.
+- Superadministradores continuam fora da lista e da contagem de usuários das empresas (empresas, perfis, sessões e carteira).
+- Migração `013_equipe_plataforma.sql` só acrescenta colunas; os superadministradores atuais viram proprietários (acesso total, como antes).
+
+### 1.8.0 — Oficina mecânica (carro e moto)
+Novo segmento **Oficina mecânica (carro e moto)** para oficinas, centros automotivos e oficinas de moto que prestam serviço e vendem produtos (óleos, peças, acessórios):
+- **Ordens de Serviço**: abertura pela placa (padrão antigo ou Mercosul), veículo novo na hora, km de entrada (não aceita km menor que o último), nível de combustível, reclamação e **checklist de entrada** (OK, avaria, ausente) para carro e moto.
+- **Orçamento** com quatro tipos de item: **serviço de preço fechado** (cadastro de serviços), **mão de obra por hora** (horas × valor-hora da OS, aceita 1,5 h), **peças** e **produtos** do estoque (com aviso de estoque insuficiente e quantidade fracionada, ex.: 3,5 L de óleo).
+- **Aprovação do cliente item a item** (quem aprovou e por qual canal); itens não aprovados ficam recusados e não são executados nem cobrados. Item incluído durante a execução fica aguardando nova aprovação (configurável).
+- Andamento: orçamento → aguardando aprovação → aprovada → em execução ⇄ aguardando peça → pronta → entregue. Prazo de entrega com alerta de atraso.
+- **Cobrança no PDV** com os valores aprovados: serviços e mão de obra geram comissão para o mecânico; peças baixam do estoque na venda; NFC-e só das mercadorias (serviço = NFS-e municipal, não emitida pelo sistema). OS pronta e cobrada é entregue automaticamente, com **garantia** (padrão 90 dias).
+- **Histórico por placa**, alerta de veículo em garantia, **lembrete de revisão** por km e/ou dias (ex.: troca de óleo a cada 5.000 km) e impressão do orçamento/OS com termo de autorização.
+- **Painel da Oficina**: veículos no pátio, atrasadas, aprovação de orçamentos, faturado (mão de obra × peças), ticket médio, horas vendidas, permanência média, produtividade por mecânico, peças mais vendidas e revisões chegando.
+- Novas permissões: Oficina — ver, editar e aprovar (alterar preço/valor-hora/garantia e cancelar OS). Configurações › Oficina: valor-hora, garantia e aprovação de adicionais.
+- Site: segmentos em **carrossel** (setas e indicadores; deslizar no celular) com o novo segmento.
+- Migração `014_oficina.sql` só acrescenta tabelas e colunas.

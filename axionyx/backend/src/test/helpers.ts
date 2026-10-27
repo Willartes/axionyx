@@ -83,7 +83,7 @@ export const db = pool
 export const baseUrl = () => base
 
 /** Cria uma empresa de um segmento com um administrador (para testes de segmentos). */
-export async function createCompanyWithAdmin(name: string, segment: 'moda' | 'hortifruti' | 'adega' | 'mercado' | 'cosmeticos' | 'odontologia' | 'estetica' | 'salao' | 'geral', email: string) {
+export async function createCompanyWithAdmin(name: string, segment: 'moda' | 'hortifruti' | 'adega' | 'mercado' | 'cosmeticos' | 'odontologia' | 'estetica' | 'salao' | 'oficina' | 'geral', email: string) {
   return tx(async (c) => {
     const r = await bootstrapCompany(c, { name, segment, branch: { code: '001', name: 'Matriz' } })
     await c.query(`UPDATE companies SET settings = settings || jsonb_build_object('vendas', COALESCE(settings->'vendas', '{}'::jsonb) || '{"exigirCaixaAberto": false}'::jsonb) WHERE id = $1`, [r.company.id])

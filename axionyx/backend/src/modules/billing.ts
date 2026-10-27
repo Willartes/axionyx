@@ -6,15 +6,16 @@ import { hashPassword, randomCode } from '../core/crypto'
 import { bootstrapCompany } from '../services/bootstrap'
 import { mercadopago, verifyWebhookSignature } from '../integrations/mercadopago'
 import { secret } from '../config'
+import { requirePlatform } from '../core/platform'
 import {
   assessRisk, setStatus, openReview, autoResolve, createCharge, ensureCheckout, applyApproved, processGatewayEvent, runBilling,
   billingSummary, webhookUrl, publicUrl, clientBackUrl, ACTIVE_STATUSES,
 } from '../services/billing'
 
 /** Rotas da carteira de clientes do AXIONYX — exclusivas do superadministrador da plataforma. */
-function sa(ctx: Ctx) { if (!ctx.user.isSuperadmin) throw forbidden('Área exclusiva da administração da plataforma AXIONYX.') }
+function sa(ctx: Ctx, perm = 'carteira.ver') { requirePlatform(ctx, perm) }
 const SA = { perm: 'admin.empresas' }
-const SEGMENTS = ['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'geral'] as const
+const SEGMENTS = ['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'oficina', 'geral'] as const
 const MODES = ['assinatura_cartao', 'link_mensal', 'manual'] as const
 const address = v.object({ cep: v.string().optional(), logradouro: v.string().optional(), numero: v.string().optional(), complemento: v.string().optional(),
   bairro: v.string().optional(), cidade: v.string().optional(), uf: v.string({ max: 2 }).optional(), codigoMunicipio: v.string({ max: 7 }).optional() }).optional()
@@ -84,14 +85,14 @@ router.get('/api/saas/plans', SA, async (ctx) => {
 })
 const planSchema = { name: v.string({ min: 2, max: 60 }), description: v.string({ max: 500 }).optional(), priceMonthly: v.money({ min: 0 }), maxUsers: v.int({ min: 1, max: 10000 }).optional(), maxBranches: v.int({ min: 1, max: 1000 }).optional(), active: v.boolean().default(true) }
 router.post('/api/saas/plans', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.configurar')
   const b = parse(v.object(planSchema), ctx.body)
   const r = await db.one(`INSERT INTO saas_plans(name, description, price_monthly, max_users, max_branches, active) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [b.name, b.description ?? null, b.priceMonthly, b.maxUsers ?? null, b.maxBranches ?? null, b.active])
   await audit(null, ctx, 'saas.plano_criado', 'saas_plan', r.id, b)
   return r
 })
 router.put('/api/saas/plans/:id', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.configurar')
   const b = parse(v.object(planSchema), ctx.body)
   const r = await db.one(`UPDATE saas_plans SET name = $2, description = $3, price_monthly = $4, max_users = $5, max_branches = $6, active = $7, updated_at = now() WHERE id = $1 RETURNING *`,
     [ctx.params.id, b.name, b.description ?? null, b.priceMonthly, b.maxUsers ?? null, b.maxBranches ?? null, b.active])
@@ -146,7 +147,7 @@ const contractSchema = {
 
 /** Nova proposta (fica em análise) — ou, com existingCompanyId, vincula um cliente que já usa o sistema (entra ativo). */
 router.post('/api/saas/contracts', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.propostas')
   const b: any = parse(v.object({ ...contractSchema, existingCompanyId: v.uuid().optional(), paidUntil: v.date().optional() }), ctx.body)
   if (b.cnpj) { if (!isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.'); b.cnpj = onlyDigits(b.cnpj) }
   if (b.contactDoc) { if (!isValidCPF(b.contactDoc)) throw unprocessable('CPF do responsável inválido.'); b.contactDoc = onlyDigits(b.contactDoc) }
@@ -183,7 +184,7 @@ router.post('/api/saas/contracts', SA, async (ctx) => {
 
 /** Altera dados comerciais (plano, valor, forma de cobrança, tolerância) e, em análise, os dados cadastrais. */
 router.put('/api/saas/contracts/:id', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.propostas')
   const partial: any = {}; for (const [kk, s] of Object.entries(contractSchema)) if (kk !== 'leadId') partial[kk] = (s as any).optional()
   const b: any = parse(v.object({ ...partial, paidUntil: v.date().optional() }), ctx.body)
   if (b.cnpj) { if (!isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.'); b.cnpj = onlyDigits(b.cnpj) }
@@ -214,7 +215,7 @@ router.put('/api/saas/contracts/:id', SA, async (ctx) => {
 
 /** Reavalia o risco (ex.: após corrigir dados ou com a consulta do CNPJ disponível). */
 router.post('/api/saas/contracts/:id/risk', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.propostas')
   const k = await getContract(ctx.params.id)
   const risk = await assessRisk(db, { contractId: k.id, cnpj: k.cnpj, companyName: k.company_name, contactEmail: k.contact_email, contactDoc: k.contact_doc })
   await db.query(`UPDATE saas_contracts SET risk_level = $2, risk_flags = $3, updated_at = now() WHERE id = $1`, [k.id, risk.level, JSON.stringify(risk.flags)])
@@ -226,7 +227,7 @@ router.post('/api/saas/contracts/:id/risk', SA, async (ctx) => {
  * e o link de pagamento. O acesso só é liberado quando o pagamento for confirmado pelo gateway (ou registrado manualmente).
  */
 router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.aprovar')
   const b = parse(v.object({ note: v.string({ max: 1000 }).optional(), branchName: v.string({ min: 2, max: 100 }).default('Matriz') }), ctx.body)
   const res = await tx(async (c) => {
     const k = await c.one(`SELECT * FROM saas_contracts WHERE id = $1 FOR UPDATE`, [ctx.params.id])
@@ -244,7 +245,7 @@ router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
     if (u?.is_superadmin) throw unprocessable('O e-mail do responsável pertence a um superadministrador. Use outro e-mail.')
     if (!u) {
       tempPassword = `Ax${randomCode(6)}${Math.floor(Math.random() * 90 + 10)}`
-      u = await c.one(`INSERT INTO users(name, email, password_hash) VALUES ($1,$2,$3) RETURNING id`, [k.contact_name, k.contact_email, hashPassword(tempPassword)])
+      u = await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,true) RETURNING id`, [k.contact_name, k.contact_email, hashPassword(tempPassword)])
     }
     await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches) VALUES ($1,$2,$3,true) ON CONFLICT DO NOTHING`, [u!.id, r.company.id, r.roles['Administrador']])
     let kk = await c.one(`UPDATE saas_contracts SET company_id = $2, reviewed_by = $3, reviewed_at = now(), review_note = $4, updated_at = now() WHERE id = $1 RETURNING *`, [k.id, r.company.id, ctx.user.id, b.note ?? null])
@@ -271,7 +272,7 @@ router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
 })
 
 router.post('/api/saas/contracts/:id/reject', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.aprovar')
   const b = parse(v.object({ reason: v.string({ min: 3, max: 1000 }) }), ctx.body)
   return tx(async (c) => {
     const k = await c.one(`SELECT * FROM saas_contracts WHERE id = $1 FOR UPDATE`, [ctx.params.id])
@@ -299,10 +300,10 @@ async function manualStatus(ctx: Ctx, to: 'suspenso' | 'ativo' | 'cancelado', al
   })
 }
 const reasonBody = (ctx: Ctx) => parse(v.object({ reason: v.string({ min: 3, max: 1000 }) }), ctx.body).reason
-router.post('/api/saas/contracts/:id/suspend', SA, async (ctx) => { sa(ctx); return manualStatus(ctx, 'suspenso', ['ativo', 'inadimplente'], reasonBody(ctx)) })
-router.post('/api/saas/contracts/:id/reactivate', SA, async (ctx) => { sa(ctx); return manualStatus(ctx, 'ativo', ['suspenso', 'inadimplente', 'cancelado'], reasonBody(ctx)) })
+router.post('/api/saas/contracts/:id/suspend', SA, async (ctx) => { sa(ctx, 'carteira.financeiro'); return manualStatus(ctx, 'suspenso', ['ativo', 'inadimplente'], reasonBody(ctx)) })
+router.post('/api/saas/contracts/:id/reactivate', SA, async (ctx) => { sa(ctx, 'carteira.financeiro'); return manualStatus(ctx, 'ativo', ['suspenso', 'inadimplente', 'cancelado'], reasonBody(ctx)) })
 router.post('/api/saas/contracts/:id/cancel', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.financeiro')
   const reason = reasonBody(ctx)
   const k = await getContract(ctx.params.id)
   let gatewayError: string | undefined
@@ -328,7 +329,7 @@ router.get('/api/saas/charges', SA, async (ctx) => {
 })
 
 router.post('/api/saas/contracts/:id/charges', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.financeiro')
   const b = parse(v.object({ kind: v.enum(['mensalidade', 'avulsa'] as const).default('avulsa'), amount: v.money({ min: 0.01 }).optional(), periodStart: v.date().optional(), dueDate: v.date().optional(), description: v.string({ max: 200 }).optional() }), ctx.body)
   const ch = await tx(async (c) => {
     const k = await c.one(`SELECT * FROM saas_contracts WHERE id = $1 FOR UPDATE`, [ctx.params.id])
@@ -347,7 +348,7 @@ router.post('/api/saas/contracts/:id/charges', SA, async (ctx) => {
 })
 
 router.post('/api/saas/charges/:id/checkout', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.financeiro')
   if (!mercadopago().configured()) throw unprocessable('Mercado Pago não configurado: defina MP_ACCESS_TOKEN nas variáveis do servidor.')
   const url = await ensureCheckout(ctx.params.id, true)
   if (!url) throw unprocessable('Cobrança não está pendente ou é cobrada pela assinatura no cartão / manualmente.')
@@ -356,7 +357,7 @@ router.post('/api/saas/charges/:id/checkout', SA, async (ctx) => {
 
 /** Baixa manual (ex.: Pix recebido direto na conta). Exige justificativa e fica na auditoria. */
 router.post('/api/saas/charges/:id/manual-payment', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.financeiro')
   const b = parse(v.object({ amount: v.money({ min: 0.01 }), method: v.enum(['pix', 'transferencia', 'boleto', 'cartao', 'dinheiro', 'outro'] as const), paidAt: v.date().optional(), note: v.string({ min: 5, max: 500 }) }), ctx.body)
   return tx(async (c) => {
     const ch = await c.one(`SELECT * FROM saas_charges WHERE id = $1 FOR UPDATE`, [ctx.params.id])
@@ -370,7 +371,7 @@ router.post('/api/saas/charges/:id/manual-payment', SA, async (ctx) => {
 })
 
 router.post('/api/saas/charges/:id/refund', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.financeiro')
   const reason = reasonBody(ctx)
   const ch = await db.one(`SELECT ch.*, k.company_id FROM saas_charges ch JOIN saas_contracts k ON k.id = ch.contract_id WHERE ch.id = $1`, [ctx.params.id])
   if (!ch) throw notFound('Cobrança')
@@ -388,7 +389,7 @@ router.post('/api/saas/charges/:id/refund', SA, async (ctx) => {
 })
 
 router.post('/api/saas/charges/:id/cancel', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.financeiro')
   const reason = reasonBody(ctx)
   const r = await db.one(`UPDATE saas_charges SET status = 'cancelada', last_status_detail = $2, updated_at = now() WHERE id = $1 AND status = 'pendente' RETURNING *`, [ctx.params.id, `cancelada: ${reason}`.slice(0, 200)])
   if (!r) throw unprocessable('Somente cobranças pendentes podem ser canceladas.')
@@ -409,7 +410,7 @@ router.get('/api/saas/reviews', SA, async (ctx) => {
 
 /** Resolve uma exceção. Ação opcional sobre o acesso: manter, suspender, reativar ou cancelar. */
 router.post('/api/saas/reviews/:id/resolve', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.aprovar')
   const b = parse(v.object({ resolution: v.string({ min: 3, max: 1000 }), action: v.enum(['manter', 'suspender', 'reativar', 'cancelar'] as const).default('manter') }), ctx.body)
   return tx(async (c) => {
     const r = await c.one(`SELECT * FROM saas_reviews WHERE id = $1 FOR UPDATE`, [ctx.params.id])
@@ -441,18 +442,18 @@ router.get('/api/saas/gateway', SA, async (ctx) => {
     events: await db.many(`SELECT id, topic, action, resource_id, signature_ok, live_mode, status, error, created_at, processed_at FROM saas_gateway_events ORDER BY id DESC LIMIT 50`) }
 })
 router.post('/api/saas/gateway/test', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.configurar')
   if (!mercadopago().configured()) throw unprocessable('Defina MP_ACCESS_TOKEN nas variáveis do servidor (Railway) e reinicie.')
   try { return await mercadopago().account() } catch (e: any) { throw new HttpError(502, 'gateway', `Falha ao consultar o Mercado Pago: ${e.message}`) }
 })
 router.post('/api/saas/gateway/events/:id/reprocess', SA, async (ctx) => {
-  sa(ctx)
+  sa(ctx, 'carteira.configurar')
   const ev = await db.one(`SELECT id, topic, resource_id, signature_ok FROM saas_gateway_events WHERE id = $1`, [ctx.params.id])
   if (!ev) throw notFound('Notificação')
   if (!ev.signature_ok) throw unprocessable('Notificação com assinatura inválida não é processada.')
   return processGatewayEvent(ev)
 })
-router.post('/api/saas/run-billing', SA, async (ctx) => { sa(ctx); const r = await runBilling(); await audit(null, ctx, 'saas.rotina_cobranca', null, null, r); return r })
+router.post('/api/saas/run-billing', SA, async (ctx) => { sa(ctx, 'carteira.financeiro'); const r = await runBilling(); await audit(null, ctx, 'saas.rotina_cobranca', null, null, r); return r })
 router.get('/api/saas/companies-without-contract', SA, async (ctx) => {
   sa(ctx)
   return db.many(`SELECT c.id, c.name, c.trade_name, c.cnpj, c.segment, c.email, c.phone, c.created_at, c.is_demo,

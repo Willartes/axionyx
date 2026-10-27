@@ -72,7 +72,7 @@ before(async () => {
   process.env.APP_PUBLIC_URL = 'https://axionyx.teste'
   setMercadoPagoClient(fake)
   env = await setup()
-  await db.query(`INSERT INTO users(name, email, password_hash, is_superadmin) VALUES ('Suporte', 'suporte@axionyx.test', $1, true)`, [hashPassword(PASSWORD)])
+  await db.query(`INSERT INTO users(name, email, password_hash, is_superadmin, platform_owner) VALUES ('Suporte', 'suporte@axionyx.test', $1, true, true)`, [hashPassword(PASSWORD)])
   SA = (await login('suporte@axionyx.test', env.companyA.company.id)).token
   A = (await login('admin.a@teste.local')).token
 })
@@ -114,6 +114,9 @@ test('aprovação cria empresa e administrador, gera link de pagamento e o acess
   assert.equal(ap.body.contract.status, 'aguardando_pagamento')
   firstChargeId = ap.body.chargeId
   clientToken = await loginWith('maria@bellaforma.test', ap.body.tempPassword)
+  // senha temporária: precisa trocar antes de usar
+  assert.equal((await call('GET', '/api/billing/me', { token: clientToken })).status, 403)
+  assert.equal((await call('POST', '/api/auth/password', { token: clientToken, body: { current: ap.body.tempPassword, next: 'Maria-Senha-2026' } })).status, 200)
   const me = await call('GET', '/api/auth/me', { token: clientToken })
   assert.equal(me.body.billing.status, 'aguardando_pagamento'); assert.equal(me.body.billing.blocked, true)
   assert.ok(me.body.billing.pending.checkout_url)

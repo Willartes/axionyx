@@ -247,7 +247,7 @@ test('estética e inteligência de serviços: retorno vencido, ocupação e desc
 
 test('superadministrador (suporte) não aparece nem conta como usuário da empresa cliente', async () => {
   const role = (await db.query(`SELECT id FROM roles WHERE company_id = $1 AND name = 'Administrador'`, [salonId])).rows[0].id
-  const su = (await db.query(`INSERT INTO users(name, email, password_hash, is_superadmin) VALUES ('Suporte Plataforma','suporte@teste.local',$1,true) RETURNING id`, [hashPassword('Teste-Senha-2026')])).rows[0].id
+  const su = (await db.query(`INSERT INTO users(name, email, password_hash, is_superadmin, platform_owner) VALUES ('Suporte Plataforma','suporte@teste.local',$1,true,true) RETURNING id`, [hashPassword('Teste-Senha-2026')])).rows[0].id
   await db.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches) VALUES ($1,$2,$3,true)`, [su, salonId, role])
   const users = await call('GET', '/api/admin/users', { token: S.token })
   assert.ok(users.body.items.every((u: any) => u.id !== su)); assert.equal(users.body.total, 2)

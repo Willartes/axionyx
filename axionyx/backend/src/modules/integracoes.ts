@@ -93,7 +93,7 @@ router.post('/api/webhooks/ecommerce/:integrationId', { auth: 'none' }, async (c
   try {
     return await tx(async (c: Q) => {
       const branchId = i.config.branchId || (await c.one(`SELECT id FROM branches WHERE company_id = $1 AND active ORDER BY code LIMIT 1`, [i.company_id])).id
-      const userId = i.config.userId || (await c.one(`SELECT uc.user_id FROM user_companies uc JOIN roles r ON r.id = uc.role_id WHERE uc.company_id = $1 AND r.name = 'Administrador' ORDER BY uc.created_at LIMIT 1`, [i.company_id])).user_id
+      const userId = i.config.userId || (await c.one(`SELECT uc.user_id FROM user_companies uc JOIN roles r ON r.id = uc.role_id WHERE uc.company_id = $1 AND r.name = 'Administrador' ORDER BY (SELECT is_superadmin FROM users WHERE id = uc.user_id), uc.created_at LIMIT 1`, [i.company_id])).user_id
       const doc = onlyDigits(b.customer.document)
       let cust = doc ? await c.one(`SELECT id FROM customers WHERE company_id = $1 AND cpf_cnpj = $2`, [i.company_id, doc]) : null
       if (!cust) {

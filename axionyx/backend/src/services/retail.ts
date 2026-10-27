@@ -8,7 +8,7 @@ import { Settings } from './settings'
  * Recursos de varejo por segmento: quantidades fracionadas (kg), etiqueta de balança,
  * lotes/validade com consumo FEFO, embalagens (unidade/caixa) e combos.
  */
-export const FRACTIONAL_UNITS = ['KG', 'L', 'M', 'M2', 'M3']
+export const FRACTIONAL_UNITS = ['KG', 'L', 'M', 'M2', 'M3', 'H']
 export const r3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000
 export const isFractional = (p: { sale_by_weight?: boolean; unit?: string | null }) => !!p.sale_by_weight || FRACTIONAL_UNITS.includes(String(p.unit || '').toUpperCase())
 
@@ -84,9 +84,9 @@ export async function consumeLots(c: Q, branchId: string, variantId: string, qty
 
 // ---------------- Expansão de itens da venda (embalagens, combos, balança) ----------------
 export interface RawItem { variantId?: string; qty: number; discount?: number; packagingId?: string; comboId?: string; scaleCode?: string; unitPriceOverride?: number
-  professionalId?: string; appointmentServiceId?: string; planItemId?: string }
+  professionalId?: string; appointmentServiceId?: string; planItemId?: string; workOrderItemId?: string }
 export interface ExpandedItem { variantId: string; qty: number; discount?: number; unitPriceOverride?: number; grossOverride?: number; packagingId?: string; comboId?: string
-  professionalId?: string | null; appointmentServiceId?: string; planItemId?: string; preApprovedDiscount?: number; expectCustomerId?: string | null; appointmentId?: string }
+  professionalId?: string | null; appointmentServiceId?: string; planItemId?: string; preApprovedDiscount?: number; expectCustomerId?: string | null; appointmentId?: string; workOrderItemId?: string; workOrderId?: string }
 
 export async function expandItems(c: Q, companyId: string, items: RawItem[], settings: Settings): Promise<ExpandedItem[]> {
   const out: ExpandedItem[] = []
@@ -121,6 +121,21 @@ export async function expandItems(c: Q, companyId: string, items: RawItem[], set
       const gross = r2(Number(pi.unit_price) * pi.qty)
       out.push({ variantId: pi.variant_id, qty: pi.qty, grossOverride: gross, unitPriceOverride: Number(pi.unit_price), discount: r2(Number(pi.discount) + (it.discount ?? 0)),
         preApprovedDiscount: Number(pi.discount), professionalId: pi.professional_id ?? pi.plan_professional ?? null, planItemId: pi.id, expectCustomerId: pi.customer_id })
+      continue
+    }
+    if (it.workOrderItemId) {
+      // item aprovado da ordem de serviço: preço, desconto e mecânico vêm da OS (orçamento aprovado pelo cliente)
+      if (seen.has('wo:' + it.workOrderItemId)) throw unprocessable(`Item ${n}: item da OS repetido.`)
+      seen.add('wo:' + it.workOrderItemId)
+      const wi = await c.one(`SELECT i.*, w.customer_id, w.status AS wo_status, w.number AS wo_number FROM work_order_items i JOIN work_orders w ON w.id = i.work_order_id
+                               WHERE i.id = $1 AND i.company_id = $2 FOR UPDATE OF i`, [it.workOrderItemId, companyId])
+      if (!wi) throw unprocessable(`Item ${n}: item da ordem de serviço não encontrado.`)
+      if (['orcamento', 'aguardando_aprovacao', 'cancelada'].includes(wi.wo_status)) throw unprocessable(`Item ${n}: a OS nº ${wi.wo_number} precisa estar aprovada para ser cobrada.`)
+      if (wi.status !== 'aprovado') throw unprocessable(`Item ${n}: "${wi.description}" não foi aprovado pelo cliente.`)
+      if (wi.sale_item_id) throw unprocessable(`Item ${n}: "${wi.description}" já foi cobrado.`)
+      const gross = r2(Number(wi.unit_price) * Number(wi.qty))
+      out.push({ variantId: wi.variant_id, qty: Number(wi.qty), grossOverride: gross, unitPriceOverride: Number(wi.unit_price), discount: r2(Number(wi.discount) + (it.discount ?? 0)),
+        preApprovedDiscount: Number(wi.discount), professionalId: wi.professional_id ?? null, workOrderItemId: wi.id, workOrderId: wi.work_order_id, expectCustomerId: wi.customer_id })
       continue
     }
     if (it.scaleCode) {

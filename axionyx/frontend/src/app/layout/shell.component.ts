@@ -160,10 +160,10 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
             <div style="position:absolute;top:40px;right:0;background:white;border:1px solid #DCE4EC;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.1);width:220px;z-index:100;overflow:hidden">
               <div style="padding:12px 16px;border-bottom:1px solid #F0F4F8">
                 <div style="font-weight:600;color:#172B3A;font-size:13px">{{ me()?.user?.name }}</div>
-                <div style="font-size:12px;color:#647687">{{ me()?.user?.role }}</div>
+                <div style="font-size:12px;color:#647687">{{ me()?.platform ? (me()?.platform?.owner ? 'Proprietário da plataforma' : (me()?.platform?.title || 'Equipe AXIONYX')) : me()?.user?.role }}</div>
               </div>
               <div style="padding:4px 0">
-                <div style="padding:8px 16px;font-size:13px;color:#172B3A;cursor:pointer;width:100%" class="btn-ghost" (click)="go('configuracoes', { tab: 'seguranca' })">Meu Perfil e Segurança</div>
+                <div style="padding:8px 16px;font-size:13px;color:#172B3A;cursor:pointer;width:100%" class="btn-ghost" (click)="go('configuracoes', { tab: 'seguranca' })">Minha senha e segurança</div>
                 <div style="padding:8px 16px;font-size:13px;color:#172B3A;cursor:pointer;width:100%" class="btn-ghost" (click)="go('configuracoes')">Preferências</div>
                 <div style="padding:8px 16px;font-size:13px;color:#172B3A;cursor:pointer;width:100%" class="btn-ghost" (click)="aiOpen.set(true)">Ajuda (AXIA)</div>
                 <div style="height:1px;background:#F0F4F8;margin:4px 0"></div>
@@ -188,7 +188,7 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
       }
 
       <div class="app-content" style="flex:1;overflow:hidden;display:flex">
-        <div class="app-screen" style="flex:1;overflow-y:auto;overflow-x:hidden"><router-outlet /></div>
+        <div class="app-screen" style="flex:1;overflow-y:auto;overflow-x:hidden">@if (!me()?.user?.must_change_password) { <router-outlet /> }</div>
         @if (aiOpen()) {
           <div class="ai-panel no-print" style="width:360px;border-left:1px solid #DCE4EC;background:white;flex-shrink:0;overflow:hidden"><ax-ai-assistant (close)="aiOpen.set(false)" /></div>
         }
@@ -196,6 +196,22 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
     </div>
   </div>
 
+  @if (me()?.user?.must_change_password) {
+    <div class="modal-backdrop" style="z-index:300">
+      <div class="modal fade-in" style="max-width:440px" role="dialog" aria-modal="true">
+        <div class="modal-header"><ax-icon name="lock" [size]="16" color="#0875D1" /><h3>Defina sua senha</h3></div>
+        <div class="modal-body">
+          <p style="font-size:13px;color:#4A5B6B;margin-bottom:12px">Você entrou com uma <b>senha temporária</b>. Crie uma senha pessoal para continuar — só você deve conhecê-la.</p>
+          <label class="field-label">Senha temporária</label><input class="input-field" type="password" autocomplete="current-password" [(ngModel)]="npw.current" />
+          <label class="field-label" style="margin-top:10px">Nova senha</label><input class="input-field" type="password" autocomplete="new-password" [(ngModel)]="npw.next" />
+          <div class="muted" style="font-size:11px;margin-top:2px">Mínimo 10 caracteres, com letras maiúsculas, minúsculas e números.</div>
+          <label class="field-label" style="margin-top:10px">Confirme a nova senha</label><input class="input-field" type="password" autocomplete="new-password" [(ngModel)]="npw.confirm" (keyup.enter)="setPassword()" />
+          @if (npw.confirm && npw.next !== npw.confirm) { <div style="font-size:11.5px;color:#C93636;margin-top:4px">As senhas não conferem.</div> }
+        </div>
+        <div class="modal-footer"><button class="btn-secondary" (click)="auth.logout()">Sair</button><button class="btn-primary" [disabled]="!npw.current || !npw.next || npw.next !== npw.confirm || npwBusy()" (click)="setPassword()">Salvar e continuar</button></div>
+      </div>
+    </div>
+  }
   @if (searchOpen()) {
     <div class="modal-backdrop" (mousedown)="searchOpen.set(false)">
       <div class="modal fade-in" style="max-width:600px" (mousedown)="$event.stopPropagation()">
@@ -231,6 +247,12 @@ export class ShellComponent implements OnInit, OnDestroy {
   readonly me = this.auth.me;
   readonly collapsed = signal(false);
   readonly mobileNavOpen = signal(false);
+  npw = { current: '', next: '', confirm: '' }; readonly npwBusy = signal(false);
+  async setPassword() {
+    this.npwBusy.set(true);
+    try { await this.api.post('/auth/password', { current: this.npw.current, next: this.npw.next }); this.npw = { current: '', next: '', confirm: '' }; await this.auth.loadMe(); this.toast.success('Senha definida.'); this.loadBadges(); }
+    catch (e) { this.toast.error(e); } finally { this.npwBusy.set(false); }
+  }
   readonly aiOpen = signal(false);
   readonly notifOpen = signal(false);
   readonly userOpen = signal(false);
@@ -252,10 +274,10 @@ export class ShellComponent implements OnInit, OnDestroy {
     const me = this.me(); if (!me) return [];
     const mods = new Set(me.company.modules || []);
     const moduleOf: Record<string, string> = { condicionais: 'condicional', consignacoes: 'consignacao', fidelidade: 'fidelidade', crm: 'crm', rh: 'rh', juridico: 'juridico', contabilidade: 'contabilidade', fiscal: 'fiscal', precificacao: 'precificacao', validade: 'validade', combos: 'combos',
-      agenda: 'agenda', servicos: 'agenda', profissionais: 'agenda', 'planos-tratamento': 'odontograma', 'inteligencia-servicos': 'agenda' };
+      agenda: 'agenda', servicos: 'agenda', profissionais: 'agenda', 'planos-tratamento': 'odontograma', 'inteligencia-servicos': 'agenda', oficina: 'oficina', veiculos: 'oficina', 'oficina-painel': 'oficina' };
     const sa = !!me.user?.is_superadmin, bill = me.billing;
     if (bill?.blocked && !sa) return [{ title: 'ASSINATURA', items: NAV.flatMap((s) => s.items).filter((i) => i.id === 'minha-assinatura') }];
-    return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.sa || sa) && (!i.billing || !!bill) && (!i.perm || this.auth.can(i.perm)) && (!moduleOf[i.id] || mods.has(moduleOf[i.id]))) })).filter((s) => s.items.length);
+    return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.sa || this.auth.pcan(i.sa)) && (!i.billing || !!bill) && (!i.perm || this.auth.can(i.perm)) && (!moduleOf[i.id] || mods.has(moduleOf[i.id]))) })).filter((s) => s.items.length);
   });
   readonly crumbs = computed(() => TITLES[this.current()] ?? ['AXIONYX']);
   readonly userInitials = computed(() => initials(this.me()?.user?.name || ''));
@@ -281,7 +303,7 @@ export class ShellComponent implements OnInit, OnDestroy {
       const r = [id, ...this.recent().filter((x) => x !== id)].slice(0, 6); this.recent.set(r); writeLs(LS_RECENT, r);
     }
   }
-  async loadBadges() { if (this.me()?.billing?.blocked && !this.me()?.user?.is_superadmin) return; try { this.badges.set(await this.api.get('/nav/badges')); } catch { /* silencioso */ } }
+  async loadBadges() { if (this.me()?.user?.must_change_password || (this.me()?.billing?.blocked && !this.me()?.user?.is_superadmin)) return; try { this.badges.set(await this.api.get('/nav/badges')); } catch { /* silencioso */ } }
   badge(i: NavItem) { const v = i.badgeKey ? this.badges()?.[i.badgeKey] : 0; return v > 0 ? v : null; }
   alert(i: NavItem) { return !!(i.alertKey && this.badges()?.[i.alertKey] > 0); }
   isActive(i: NavItem) {

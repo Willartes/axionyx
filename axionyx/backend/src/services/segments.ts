@@ -6,7 +6,7 @@ import { DEFAULT_ROLES } from '../core/permissions'
  * categorias e unidades iniciais e parâmetros padrão. O núcleo (vendas, estoque, financeiro, fiscal...)
  * é o mesmo para todos; aplicar um pacote só ADICIONA módulos, categorias e parâmetros — nunca apaga dados.
  */
-export type SegmentId = 'moda' | 'hortifruti' | 'adega' | 'mercado' | 'cosmeticos' | 'odontologia' | 'estetica' | 'salao' | 'geral'
+export type SegmentId = 'moda' | 'hortifruti' | 'adega' | 'mercado' | 'cosmeticos' | 'odontologia' | 'estetica' | 'salao' | 'oficina' | 'geral'
 
 /** Módulos que dependem do ramo (além dos módulos gerais do sistema). */
 export const FEATURE_MODULES: Record<string, { name: string; desc: string; icon: string }> = {
@@ -21,6 +21,7 @@ export const FEATURE_MODULES: Record<string, { name: string; desc: string; icon:
   agenda: { name: 'Agenda, serviços e profissionais', desc: 'Agenda por profissional, serviços com duração, bloqueios, comissão por profissional e cobrança do atendimento no PDV', icon: 'calendar-days' },
   pacotes: { name: 'Pacotes de sessões', desc: 'Venda de pacotes (ex.: 10 sessões) com controle de saldo, validade e baixa a cada atendimento', icon: 'ticket' },
   prontuario: { name: 'Prontuário e fichas', desc: 'Anamnese com consentimento, evolução, ficha técnica e histórico de atendimentos (dados de saúde com acesso auditado)', icon: 'clipboard-list' },
+  oficina: { name: 'Oficina: ordens de serviço e veículos', desc: 'Ordem de serviço com checklist de entrada, orçamento com aprovação, mão de obra por serviço ou por hora, peças do estoque, garantia, histórico por placa e lembrete de revisão', icon: 'wrench' },
   odontograma: { name: 'Odontograma e planos de tratamento', desc: 'Odontograma por dente e face, plano de tratamento com aprovação e cobrança parcelada', icon: 'smile' },
 }
 
@@ -109,6 +110,17 @@ export const SEGMENTS: Record<SegmentId, SegmentDef> = {
     categories: ['Cabelo — corte', 'Cabelo — coloração', 'Cabelo — tratamentos', 'Escova e penteado', 'Barbearia', 'Manicure e pedicure', 'Sobrancelhas e cílios', 'Maquiagem', 'Depilação',
       'Estética facial', 'Estética corporal', 'Pacotes', 'Produtos para cabelo', 'Produtos para unhas', 'Cosméticos'],
     settings: { agenda: { intervaloMin: 15, antecedenciaLembreteHoras: 24 }, validade: { alertaDias: 60 } },
+  },
+  oficina: {
+    id: 'oficina', name: 'Oficina mecânica (carro e moto)', short: 'Oficina', icon: 'wrench', status: 'disponivel',
+    description: 'Oficinas mecânicas, centros automotivos e oficinas de moto: ordem de serviço com checklist e aprovação do orçamento, mão de obra por serviço ou por hora, peças e produtos do estoque repassados ao cliente, comissão por mecânico, garantia, histórico por placa e lembrete de revisão.',
+    modules: [...CORE, 'oficina', 'agenda', 'combos'],
+    terms: { profissional: 'Mecânico', profissionais: 'Mecânicos', atendimento: 'Ordem de serviço', atendimentos: 'Ordens de serviço', sala: 'Box/elevador', variacao: 'Item' },
+    defaultUnit: 'UN', units: ['UN', 'L', 'H', 'KIT', 'JG', 'PAR', 'PC', 'M'],
+    categories: ['Serviços — revisão e manutenção', 'Serviços — motor', 'Serviços — freios', 'Serviços — suspensão e direção', 'Serviços — elétrica e injeção', 'Serviços — ar-condicionado',
+      'Serviços — moto', 'Óleos e lubrificantes', 'Filtros', 'Peças — motor', 'Peças — freios', 'Peças — suspensão', 'Peças — elétrica', 'Peças — moto', 'Baterias', 'Pneus e câmaras',
+      'Aditivos e fluidos', 'Acessórios', 'Limpeza automotiva'],
+    settings: { oficina: { valorHora: 120, garantiaDias: 90 }, agenda: { intervaloMin: 30, antecedenciaLembreteHoras: 24 } },
   },
   geral: {
     id: 'geral', name: 'Varejo geral', short: 'Varejo', icon: 'store', status: 'disponivel',

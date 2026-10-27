@@ -57,6 +57,11 @@ const TABS: { id: string; label: string; icon: string; title: string; desc: stri
     { section: 'agenda', key: 'fusoHorario', label: 'Fuso horário da agenda', type: 'select', module: 'agenda', options: [['America/Sao_Paulo', 'Brasília (SP, RJ, MG, Sul, GO, DF, BA, NE)'], ['America/Manaus', 'Amazonas (AM)'], ['America/Cuiaba', 'Mato Grosso (MT)'],
       ['America/Campo_Grande', 'Mato Grosso do Sul (MS)'], ['America/Porto_Velho', 'Rondônia (RO)'], ['America/Boa_Vista', 'Roraima (RR)'], ['America/Rio_Branco', 'Acre (AC)'], ['America/Belem', 'Pará/Amapá (PA, AP)'], ['America/Noronha', 'Fernando de Noronha']] },
   ] },
+  { id: 'oficina', label: 'Oficina', icon: 'wrench', title: 'Oficina', desc: 'Valor da hora de mão de obra, garantia e aprovação do orçamento', fields: [
+    { section: 'oficina', key: 'valorHora', label: 'Valor da hora de mão de obra', desc: 'Sugerido em cada nova OS (pode ser ajustado por OS por quem tem permissão de aprovar)', type: 'number', min: 0, max: 5000, step: 5, suffix: 'R$/h', module: 'oficina' },
+    { section: 'oficina', key: 'garantiaDias', label: 'Garantia padrão dos serviços', desc: 'Contada a partir da entrega do veículo (o CDC prevê no mínimo 90 dias para serviços duráveis)', type: 'number', min: 0, max: 3650, suffix: 'dias', module: 'oficina' },
+    { section: 'oficina', key: 'exigirAprovacao', label: 'Itens adicionais exigem nova aprovação', desc: 'Ligado: peça ou serviço incluído durante a execução fica aguardando aprovação do cliente. Desligado: entra aprovado (o orçamento inicial sempre precisa de aprovação)', type: 'bool', module: 'oficina' },
+  ] },
   { id: 'whatsapp', label: 'WhatsApp', icon: 'message-circle', title: 'WhatsApp da Empresa', desc: 'Número oficial da empresa para lembretes, cobranças e atendimento' },
   { id: 'empresa', label: 'Empresa', icon: 'building-2', title: 'Dados da Empresa', desc: 'Informações legais e fiscais da empresa ativa' },
   { id: 'seguranca', label: 'Segurança', icon: 'lock', title: 'Segurança', desc: 'Senha, autenticação em dois fatores e sessões ativas' },

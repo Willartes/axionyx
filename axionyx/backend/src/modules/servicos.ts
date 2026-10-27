@@ -41,7 +41,7 @@ router.get('/api/services', { perm: ['produtos.ver', 'agenda.ver'] }, async (ctx
   if (q.active !== 'all') w.add('p.active = ?', q.active !== 'false')
   if (q.q) w.add('(p.name ILIKE ? OR p.code ILIKE ?)', `%${q.q}%`, `%${q.q}%`)
   w.addIf(q.category, 'p.category_id = ?', q.category)
-  const rows = await paged(db, `SELECT p.id, p.code, p.name, p.kind, p.sale_price, ${can(ctx.user, 'produtos.custo') ? 'p.cost_price,' : ''} p.duration_min, p.commission_pct, p.return_days, p.service_code,
+  const rows = await paged(db, `SELECT p.id, p.code, p.name, p.kind, p.sale_price, ${can(ctx.user, 'produtos.custo') ? 'p.cost_price,' : ''} p.duration_min, p.commission_pct, p.return_days, p.return_km, p.service_code,
                                        p.package_service_id, p.package_sessions, p.package_validity_days, p.active, p.description, p.category_id, ca.name AS category, ps.name AS package_service,
                                        (SELECT id FROM product_variants v WHERE v.product_id = p.id AND v.active ORDER BY v.created_at LIMIT 1) AS variant_id,
                                        (SELECT count(*)::int FROM professional_services x WHERE x.product_id = p.id) AS professionals,
@@ -63,6 +63,7 @@ const serviceSchema = {
   duration_min: v.int({ min: 5, max: 720 }).nullable().optional(),
   commission_pct: v.number({ min: 0, max: 100 }).nullable().optional(),
   return_days: v.int({ min: 1, max: 730 }).nullable().optional(),
+  return_km: v.int({ min: 100, max: 200000 }).nullable().optional(),
   service_code: v.string({ max: 10 }).nullable().optional(),
   package_service_id: v.uuid().nullable().optional(),
   package_sessions: v.int({ min: 1, max: 500 }).nullable().optional(),
@@ -85,11 +86,11 @@ router.post('/api/services', { perm: 'servicos.editar' }, async (ctx) => {
     const code = b.code || `${b.kind === 'pacote' ? 'PCT' : 'SRV'}${String(await nextNumber(c, ctx.user.companyId, 'codigo_' + b.kind)).padStart(4, '0')}`
     if (await c.one(`SELECT 1 FROM products WHERE company_id = $1 AND code = $2`, [ctx.user.companyId, code])) throw conflict(`Já existe item com o código ${code}.`)
     const p = await c.one(`INSERT INTO products(company_id, created_by, kind, code, name, description, category_id, sale_price, cost_price, duration_min, commission_pct, return_days, service_code,
-                             package_service_id, package_sessions, package_validity_days, active, track_stock, unit, cfop)
-                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,COALESCE($17,true),false,$18,'5933') RETURNING *`,
+                             package_service_id, package_sessions, package_validity_days, active, track_stock, unit, cfop, return_km)
+                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,COALESCE($17,true),false,$18,'5933',$19) RETURNING *`,
       [ctx.user.companyId, ctx.user.id, b.kind, code, b.name, b.description ?? null, b.category_id ?? null, b.sale_price, b.cost_price ?? 0, b.kind === 'servico' ? b.duration_min ?? null : null,
         b.commission_pct ?? null, b.return_days ?? null, b.service_code ?? null, b.kind === 'pacote' ? b.package_service_id : null, b.kind === 'pacote' ? b.package_sessions : null,
-        b.kind === 'pacote' ? b.package_validity_days ?? null : null, b.active ?? null, b.kind === 'pacote' ? 'PCT' : 'UN'])
+        b.kind === 'pacote' ? b.package_validity_days ?? null : null, b.active ?? null, b.kind === 'pacote' ? 'PCT' : 'UN', b.kind === 'servico' ? b.return_km ?? null : null])
     const [variant] = await createVariants(c, ctx.user.companyId, p, [{ size_id: null, color_id: null }])
     await audit(c, ctx, b.kind === 'pacote' ? 'pacote.criado' : 'servico.criado', 'product', p.id, { code, name: b.name, price: b.sale_price })
     return { ...p, variant_id: variant?.id }

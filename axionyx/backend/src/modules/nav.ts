@@ -1,4 +1,5 @@
 import { router, can } from '../core/http'
+import { platformCan } from '../core/platform'
 import { db } from '../core/db'
 
 /** Contadores reais para o menu lateral e notificações (substitui os números fixos do protótipo). */
@@ -24,7 +25,11 @@ router.get('/api/nav/badges', {}, async (ctx) => {
           AND (a.start_at AT TIME ZONE COALESCE((SELECT settings->'agenda'->>'fusoHorario' FROM companies WHERE id = $1), 'America/Sao_Paulo'))::date
             = (now() AT TIME ZONE COALESCE((SELECT settings->'agenda'->>'fusoHorario' FROM companies WHERE id = $1), 'America/Sao_Paulo'))::date
           AND ($3::boolean OR a.professional_id IN (SELECT id FROM professionals WHERE company_id = $1 AND user_id = $4))) AS appointments_today,
-      (SELECT count(*)::int FROM treatment_plans WHERE company_id = $1 AND status = 'apresentado') AS plans_presented`, [id, br, can(ctx.user, 'agenda.todas'), ctx.user.id])
+      (SELECT count(*)::int FROM treatment_plans WHERE company_id = $1 AND status = 'apresentado') AS plans_presented,
+      (SELECT count(*)::int FROM work_orders WHERE company_id = $1 AND status NOT IN ('entregue','cancelada')) AS wo_open,
+      (SELECT count(*)::int FROM work_orders WHERE company_id = $1 AND promised_at < now() AND status NOT IN ('pronta','entregue','cancelada')) AS wo_late,
+      (SELECT count(*)::int FROM work_orders WHERE company_id = $1 AND status = 'pronta') AS wo_ready,
+      (SELECT count(*)::int FROM vehicle_reminders WHERE company_id = $1 AND status = 'aberto' AND due_date <= current_date + 7) AS vehicle_reminders`, [id, br, can(ctx.user, 'agenda.todas'), ctx.user.id])
   const notifications: { icon: string; text: string; link: string; tone: string }[] = []
   if (r.low_stock && can(ctx.user, 'estoque.ver')) notifications.push({ icon: 'boxes', text: `${r.low_stock} variação(ões) no estoque mínimo nesta filial`, link: '/estoque-posicao', tone: 'warning' })
   if (r.overdue_receivables && can(ctx.user, 'financeiro.ver')) notifications.push({ icon: 'wallet', text: `${r.overdue_receivables} título(s) a receber vencido(s)`, link: '/contas-receber', tone: 'danger' })
@@ -36,8 +41,11 @@ router.get('/api/nav/badges', {}, async (ctx) => {
   if (r.legal_deadlines && can(ctx.user, 'juridico.ver')) notifications.push({ icon: 'scale', text: `${r.legal_deadlines} prazo(s) jurídico(s) nos próximos 7 dias`, link: '/processos', tone: 'warning' })
   if (r.expiring_lots && can(ctx.user, 'estoque.ver')) notifications.push({ icon: 'calendar-clock', text: `${r.expiring_lots} lote(s) vencido(s) ou perto do vencimento`, link: '/validade', tone: 'warning' })
   if (r.plans_presented && can(ctx.user, 'prontuario.ver')) notifications.push({ icon: 'clipboard-list', text: `${r.plans_presented} plano(s) de tratamento aguardando aprovação do paciente`, link: '/planos-tratamento', tone: 'info' })
+  if (r.wo_late && can(ctx.user, 'oficina.ver')) notifications.push({ icon: 'wrench', text: `${r.wo_late} OS com prazo de entrega vencido`, link: '/oficina', tone: 'danger' })
+  if (r.wo_ready && can(ctx.user, 'oficina.ver')) notifications.push({ icon: 'car', text: `${r.wo_ready} veículo(s) pronto(s) para entrega`, link: '/oficina', tone: 'info' })
+  if (r.vehicle_reminders && can(ctx.user, 'oficina.ver')) notifications.push({ icon: 'calendar-clock', text: `${r.vehicle_reminders} revisão(ões) de clientes vencendo nos próximos 7 dias`, link: '/oficina-painel', tone: 'info' })
   if (r.integration_errors && can(ctx.user, 'integracoes.ver')) notifications.push({ icon: 'plug', text: `${r.integration_errors} evento(s) de integração com erro`, link: '/integracoes', tone: 'danger' })
-  if (ctx.user.isSuperadmin) {
+  if (platformCan(ctx.user, 'carteira.ver')) {
     const sx = await db.one(`SELECT (SELECT count(*)::int FROM saas_reviews WHERE status = 'aberta') AS saas_reviews,
                                     (SELECT count(*)::int FROM saas_reviews WHERE status = 'aberta' AND severity = 'alta') AS saas_reviews_high,
                                     (SELECT count(*)::int FROM saas_contracts WHERE status = 'em_analise') AS saas_proposals`)
@@ -66,5 +74,5 @@ router.get('/api/health', { auth: 'none' }, async () => {
   const t0 = Date.now()
   await db.query('SELECT 1')
   const m = await db.one(`SELECT count(*)::int AS n FROM schema_migrations`)
-  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.6.0' }
+  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.8.0' }
 })

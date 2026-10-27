@@ -11,9 +11,10 @@ import { createDocumentForSale } from './fiscal'
 import { randomCode } from '../core/crypto'
 import { expandItems, checkQty, isFractional, consumeLots, r3, RawItem } from './retail'
 import { addProfessionalCommission, commissionPct, completeAppointment, refreshPlanStatus } from './agenda'
+import { workOrderBilled } from './workshop'
 
 export interface SaleItemInput { variantId?: string; qty: number; discount?: number; unitPriceOverride?: number; packagingId?: string; comboId?: string; scaleCode?: string
-  professionalId?: string; appointmentServiceId?: string; planItemId?: string }
+  professionalId?: string; appointmentServiceId?: string; planItemId?: string; workOrderItemId?: string }
 export interface PaymentInput { methodId: string; amount: number; installments?: number; firstDueDate?: string; storeCreditCode?: string; details?: Record<string, unknown> }
 export interface SaleInput {
   type?: 'venda' | 'orcamento'
@@ -92,7 +93,7 @@ export async function createSale(c: Q, a: Actor, input: SaleInput, ctx?: Ctx) {
     subtotal += gross; lineDiscounts += disc; costTotal += Number(v.cost) * qty; itemsCount += isFractional(v) ? 1 : qty
     return { v, qty, unit: r2(unit), gross, disc, net: r2(gross - disc), comboId: it.comboId ?? null, packagingId: it.packagingId ?? null, tierMin: tier ? Number(tier.min_qty) : null,
       professionalId: v.kind === 'pacote' ? null : (it.professionalId ?? null), appointmentServiceId: it.appointmentServiceId ?? null, appointmentId: it.appointmentId ?? null,
-      planItemId: it.planItemId ?? null, preApproved: r2(it.preApprovedDiscount ?? 0), expectCustomerId: it.expectCustomerId ?? null, id: '' as string }
+      planItemId: it.planItemId ?? null, workOrderItemId: it.workOrderItemId ?? null, workOrderId: it.workOrderId ?? null, preApproved: r2(it.preApprovedDiscount ?? 0), expectCustomerId: it.expectCustomerId ?? null, id: '' as string }
   })
   // atendimento/plano de tratamento: a venda precisa ser do mesmo cliente
   for (const l of lines) {
@@ -321,6 +322,7 @@ export async function createSale(c: Q, a: Actor, input: SaleInput, ctx?: Ctx) {
 
   // ---------- Atendimentos e planos de tratamento cobrados ----------
   const apptIds = new Set<string>()
+  const woIds = new Set<string>()
   for (const l of lines) {
     if (l.appointmentServiceId) {
       await c.query(`UPDATE appointment_services SET sale_item_id = $2 WHERE id = $1`, [l.appointmentServiceId, l.id])
@@ -330,7 +332,13 @@ export async function createSale(c: Q, a: Actor, input: SaleInput, ctx?: Ctx) {
       await c.query(`UPDATE treatment_plan_items SET sale_id = $2 WHERE id = $1`, [l.planItemId, sale.id])
       await refreshPlanStatus(c, l.planItemId)
     }
+    if (l.workOrderItemId) {
+      await c.query(`UPDATE work_order_items SET sale_item_id = $2 WHERE id = $1`, [l.workOrderItemId, l.id])
+      await c.query(`UPDATE sale_items SET work_order_item_id = $2 WHERE id = $1`, [l.id, l.workOrderItemId])
+      if (l.workOrderId) woIds.add(l.workOrderId)
+    }
   }
+  for (const id of woIds) await workOrderBilled(c, { companyId: a.companyId, userId: a.userId }, id, sale.id)
   for (const id of apptIds) {
     await c.query(`UPDATE appointments SET sale_id = $2 WHERE id = $1`, [id, sale.id])
     await completeAppointment(c, { companyId: a.companyId, userId: a.userId }, id)
@@ -415,6 +423,13 @@ export async function cancelSale(c: Q, a: Actor, saleId: string, reason: string,
   await c.query(`UPDATE appointment_services SET sale_item_id = NULL WHERE sale_item_id IN (SELECT id FROM sale_items WHERE sale_id = $1)`, [saleId])
   await c.query(`UPDATE appointments SET sale_id = NULL WHERE sale_id = $1`, [saleId])
   await c.query(`UPDATE treatment_plan_items SET sale_id = NULL WHERE sale_id = $1`, [saleId])
+  // OS volta a ficar pendente de cobrança (não reabre a entrega: registra no histórico)
+  const wos = await c.many(`SELECT DISTINCT i.work_order_id FROM work_order_items i JOIN sale_items si ON si.id = i.sale_item_id WHERE si.sale_id = $1`, [saleId])
+  await c.query(`UPDATE work_order_items SET sale_item_id = NULL WHERE sale_item_id IN (SELECT id FROM sale_items WHERE sale_id = $1)`, [saleId])
+  for (const w of wos) {
+    await c.query(`UPDATE work_orders SET sale_id = NULL, updated_at = now() WHERE id = $1 AND sale_id = $2`, [w.work_order_id, saleId])
+    await c.query(`INSERT INTO work_order_events(work_order_id, note, user_id) VALUES ($1,$2,$3)`, [w.work_order_id, `Venda ${s.number} cancelada: itens voltaram a ficar pendentes de cobrança (${reason})`, a.userId])
+  }
   await c.query(`UPDATE fiscal_documents SET status = 'cancelado', cancelled_at = now(), cancel_reason = $2 WHERE sale_id = $1 AND status IN ('rascunho','invalido','pendente_configuracao','erro','rejeitado')`, [saleId, 'Venda cancelada: ' + reason])
   await c.query(`UPDATE sales SET status = 'cancelada', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3 WHERE id = $1`, [saleId, a.userId, reason])
   if (ctx) await audit(c, ctx, 'venda.cancelada', 'sale', saleId, { number: s.number, total: s.total, reason }, 'warning')

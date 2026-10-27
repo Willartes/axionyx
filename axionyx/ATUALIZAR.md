@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.6.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.8.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.6.0: carteira de clientes e cobranca Mercado Pago"
+git commit -m "AXIONYX 1.8.0: segmento oficina mecanica (carro e moto)"
 git push origin main
 ```
 
@@ -34,3 +34,7 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 **1.5.2**: só frontend (responsividade) e número de versão — nenhuma migração nova, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba) para limpar o cache.
 
 **1.6.0**: nova migração `012_assinaturas.sql`, aplicada sozinha ao iniciar a API. Ela só **cria tabelas novas** (planos, contratos, cobranças, fila de auditoria, notificações do gateway); nenhuma tabela existente é alterada e as empresas atuais continuam funcionando sem bloqueio. Depois do deploy, configure no Railway as variáveis `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` e `APP_PUBLIC_URL` (passo a passo na tela Minha Carteira › Mercado Pago e em `docs/INTEGRACOES.md`, seção 7).
+
+**1.7.0**: nova migração `013_equipe_plataforma.sql` (aplicada sozinha ao iniciar). Só **acrescenta colunas** na tabela de usuários; nenhum cadastro é alterado, exceto marcar os superadministradores atuais como **proprietários** (mantêm acesso total). Depois do deploy: Minha Carteira › Equipe da Plataforma.
+
+**1.8.0**: nova migração `014_oficina.sql` (aplicada sozinha). Só **cria tabelas** (veículos, ordens de serviço, itens, histórico, lembretes) e **acrescenta colunas** (`products.return_km`, `sale_items.work_order_item_id`); também concede as permissões da oficina aos perfis padrão. Nenhum cadastro existente é alterado. Para usar: crie a empresa com o segmento "Oficina mecânica" ou troque o segmento de uma empresa em Administração › Módulos.

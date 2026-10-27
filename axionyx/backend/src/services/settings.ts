@@ -68,6 +68,12 @@ export const DEFAULT_SETTINGS = {
     toleranciaFaltaMin: 15,
     fusoHorario: 'America/Sao_Paulo',
   },
+  /** Oficina mecânica */
+  oficina: {
+    valorHora: 120,
+    garantiaDias: 90,
+    exigirAprovacao: true,
+  },
 }
 export type Settings = typeof DEFAULT_SETTINGS
 

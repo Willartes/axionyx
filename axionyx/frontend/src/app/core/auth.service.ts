@@ -4,7 +4,9 @@ import { Api } from './api.service';
 
 export type Stage = 'mfa' | 'context' | 'full';
 export interface Me {
-  user: { id: string; name: string; email: string; mfa_enabled: boolean; is_superadmin: boolean; role: string; isSeller: boolean; maxDiscountPct: number; allBranches: boolean; last_login_at?: string };
+  user: { id: string; name: string; email: string; mfa_enabled: boolean; is_superadmin: boolean; role: string; isSeller: boolean; maxDiscountPct: number; allBranches: boolean; last_login_at?: string; must_change_password?: boolean; platform_title?: string | null };
+  /** Equipe da plataforma (só superadministradores) */
+  platform?: { owner: boolean; permissions: string[]; title: string | null } | null;
   company: { id: string; name: string; trade_name: string | null; cnpj: string | null; color: string; is_demo: boolean; modules: string[]; tax_regime: string; segment?: string };
   segment?: { id: string; name: string; short: string; icon: string; terms: Record<string, string>; units: string[]; defaultUnit: string };
   branch: { id: string; code: string; name: string; cnpj: string | null };
@@ -56,6 +58,9 @@ export class AuthService {
     this.session.set(null); this.me.set(null);
     try { sessionStorage.removeItem(KEY); localStorage.removeItem(KEY); } catch { /* */ }
   }
+
+  /** Permissão da equipe da plataforma AXIONYX (proprietário tem todas). */
+  pcan(perm: string): boolean { const pl = this.me()?.platform; return !!pl && (pl.owner || pl.permissions.includes(perm)); }
 
   can(perm: string | string[]): boolean {
     const p = this.permissions();

@@ -4,6 +4,8 @@ import { ShellComponent } from './layout/shell.component';
 import { SplashPage, LoginPage, MfaPage, CompanySelectPage, BranchSelectPage } from './pages/auth/auth.pages';
 
 const p = (perm?: string | string[]) => ({ canActivate: [permGuard], data: { perm } });
+/** Telas da equipe da plataforma (superadministradores com a permissão indicada) */
+const pp = (platform: string) => ({ canActivate: [permGuard], data: { platform } });
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', loadComponent: () => import('./pages/site/landing.page').then((m) => m.LandingPage), title: 'AXIONYX - ERP' },
@@ -42,6 +44,10 @@ export const routes: Routes = [
       { path: 'profissionais', ...p(['profissionais.editar', 'comissoes.ver', 'agenda.ver']), loadComponent: () => import('./pages/servicos/profissionais.page').then((m) => m.ProfissionaisPage) },
       { path: 'ficha/:id', ...p(['prontuario.ver', 'clientes.ver']), loadComponent: () => import('./pages/servicos/ficha.page').then((m) => m.FichaPage) },
       { path: 'planos-tratamento', ...p('prontuario.ver'), loadComponent: () => import('./pages/servicos/planos.page').then((m) => m.PlanosPage) },
+      { path: 'oficina', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/oficina.page').then((m) => m.OficinaPage) },
+      { path: 'os-detail/:id', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/os-detail.page').then((m) => m.OsDetailPage) },
+      { path: 'veiculos', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/veiculos.page').then((m) => m.VeiculosPage) },
+      { path: 'oficina-painel', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/oficina-painel.page').then((m) => m.OficinaPainelPage) },
       { path: 'inteligencia-servicos', ...p(['dashboard.ver', 'agenda.ver']), loadComponent: () => import('./pages/servicos/inteligencia-servicos.page').then((m) => m.InteligenciaServicosPage) },
       // Condicional / consignação
       { path: 'condicionais', ...p('condicional.ver'), loadComponent: () => import('./pages/condicional/condicional.pages').then((m) => m.CondicionaisPage) },
@@ -125,12 +131,13 @@ export const routes: Routes = [
       { path: 'auditoria', ...p('auditoria.ver'), loadComponent: () => import('./pages/admin/admin.pages').then((m) => m.AuditoriaPage) },
       { path: 'logs', ...p('auditoria.ver'), loadComponent: () => import('./pages/admin/admin.pages').then((m) => m.AuditoriaPage) },
       // Carteira de clientes do AXIONYX (superadministrador)
-      { path: 'saas-carteira', ...p('admin.empresas'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasCarteiraPage) },
-      { path: 'saas-clientes', ...p('admin.empresas'), loadComponent: () => import('./pages/saas/saas-clientes.page').then((m) => m.SaasClientesPage) },
-      { path: 'saas-auditoria', ...p('admin.empresas'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasAuditoriaPage) },
-      { path: 'saas-cobrancas', ...p('admin.empresas'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasCobrancasPage) },
-      { path: 'saas-planos', ...p('admin.empresas'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasPlanosPage) },
-      { path: 'saas-gateway', ...p('admin.empresas'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasGatewayPage) },
+      { path: 'saas-carteira', ...pp('carteira.ver'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasCarteiraPage) },
+      { path: 'saas-clientes', ...pp('carteira.ver'), loadComponent: () => import('./pages/saas/saas-clientes.page').then((m) => m.SaasClientesPage) },
+      { path: 'saas-auditoria', ...pp('carteira.ver'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasAuditoriaPage) },
+      { path: 'saas-cobrancas', ...pp('carteira.ver'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasCobrancasPage) },
+      { path: 'saas-planos', ...pp('carteira.ver'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasPlanosPage) },
+      { path: 'saas-gateway', ...pp('carteira.ver'), loadComponent: () => import('./pages/saas/saas.pages').then((m) => m.SaasGatewayPage) },
+      { path: 'plataforma-equipe', ...pp('plataforma.equipe'), loadComponent: () => import('./pages/platform/equipe.page').then((m) => m.EquipePage) },
       { path: 'minha-assinatura', loadComponent: () => import('./pages/saas/minha-assinatura.page').then((m) => m.MinhaAssinaturaPage) },
       { path: 'configuracoes', loadComponent: () => import('./pages/admin/configuracoes.page').then((m) => m.ConfiguracoesPage) },
       { path: 'sem-permissao', loadComponent: () => import('./pages/misc').then((m) => m.NoPermissionPage) },

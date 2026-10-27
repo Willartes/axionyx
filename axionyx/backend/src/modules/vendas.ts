@@ -96,7 +96,7 @@ router.get('/api/cash/sessions/:id', { perm: ['caixa.operar', 'caixa.fechar', 'f
 // ---------- Vendas ----------
 const itemSchema = v.object({ variantId: v.uuid().optional(), qty: v.number({ min: 0.001, max: 100000 }), discount: v.money({ min: 0 }).optional(),
   packagingId: v.uuid().optional(), comboId: v.uuid().optional(), scaleCode: v.string({ pattern: /^\d{13}$/, patternMsg: 'Etiqueta de balança inválida.' }).optional(),
-  professionalId: v.uuid().optional(), appointmentServiceId: v.uuid().optional(), planItemId: v.uuid().optional() })
+  professionalId: v.uuid().optional(), appointmentServiceId: v.uuid().optional(), planItemId: v.uuid().optional(), workOrderItemId: v.uuid().optional() })
 const paymentSchema = v.object({ methodId: v.uuid(), amount: v.money({ min: 0.01 }), installments: v.int({ min: 1, max: 24 }).optional(), firstDueDate: v.date().optional(), storeCreditCode: v.string({ max: 20 }).optional(), details: v.json().optional() })
 const saleSchema = v.object({
   type: v.enum(['venda', 'orcamento'] as const).default('venda'),
