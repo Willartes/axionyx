@@ -173,3 +173,23 @@ Nada é apagado: suspensão e cancelamento deixam os dados disponíveis para con
 **Segurança**: dados de cartão nunca passam pelo AXIONYX (checkout hospedado do Mercado Pago). Credenciais só em variáveis de ambiente. Toda ação (aprovação, recusa, baixa manual, estorno, suspensão, reativação, cancelamento) fica na auditoria com usuário e motivo.
 
 **Clientes que já usam o sistema** continuam sem bloqueio até serem vinculados (Clientes e Contratos › Vincular cliente existente), informando até quando já estão pagos.
+
+## 8. E-mail de convites — link de ativação (versão 1.10)
+
+Novos usuários (empresas clientes, equipe da plataforma e administrador do cliente na aprovação da proposta) recebem um **link de ativação** por e-mail e criam a própria senha. Nenhuma senha é exibida na tela nem enviada por e-mail. O mesmo mecanismo envia **links de redefinição de senha** (Usuários › Senha/Convite).
+
+**Segurança**: token aleatório de 256 bits, guardado só como hash SHA-256; uso único; validade `ACTIVATION_HOURS` (padrão 48 h); gerar um novo link invalida os anteriores; ao usar, todas as sessões da conta são encerradas; tentativas limitadas por IP; o link é montado com `APP_PUBLIC_URL` (nunca com o endereço que veio na requisição). Enquanto a conta não é ativada, ela tem uma senha aleatória que ninguém conhece. Se o envio falhar, o sistema registra o erro e oferece uma senha temporária (troca obrigatória no primeiro acesso).
+
+**Opção A — serviço transacional (recomendado; funciona no plano Hobby do Railway)**
+1. Crie a conta no Resend (resend.com) ou no Brevo (brevo.com).
+2. Adicione o domínio `axionyxerp.com.br` e copie os registros DNS indicados (SPF, DKIM e, se pedidos, DMARC/MX de retorno) para o Cloudflare › DNS, em **DNS only**. Aguarde a verificação.
+3. Gere a chave de API e salve no Railway como `RESEND_API_KEY` ou `BREVO_API_KEY`.
+4. Defina `EMAIL_FROM` (ex.: `nao-responda@axionyxerp.com.br`), opcionalmente `EMAIL_FROM_NAME`, e `APP_PUBLIC_URL` (ex.: `https://www.axionyxerp.com.br`). Faça o redeploy.
+
+**Opção B — SMTP do seu e-mail (exige Railway Pro, que libera as portas 465/587)**
+`SMTP_HOST`, `SMTP_PORT` (587 com STARTTLS ou 465 com TLS), `SMTP_USER`, `SMTP_PASS` (use **senha de aplicativo**), `EMAIL_FROM` igual à conta (ou alias autorizado). Conexões sem criptografia são recusadas.
+
+Com as duas configuradas, `EMAIL_PROVIDER` escolhe (`resend`, `brevo` ou `smtp`); sem ela, a ordem é Resend → Brevo → SMTP.
+
+**Conferir**: Minha Carteira › **E-mail de convites** mostra a situação, envia um e-mail de teste e lista os últimos envios (sem o conteúdo e sem o link).
+

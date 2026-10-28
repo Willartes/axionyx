@@ -4,6 +4,8 @@ import { v, parse } from '../core/validate'
 import { notFound, unprocessable, conflict, forbidden } from '../core/errors'
 import { hashPassword, passwordPolicy, randomCode } from '../core/crypto'
 import { PLATFORM_PERMISSIONS, PLATFORM_KEYS, requirePlatform } from '../core/platform'
+import { sendActivation, inviteOrFallback, unusablePasswordHash, INVITE_SQL } from '../services/activation'
+import { resolveDelivery } from './admin'
 
 /**
  * Equipe da plataforma AXIONYX: superadministradores (proprietários e agentes operacionais com permissões limitadas).
@@ -31,7 +33,7 @@ router.get('/api/platform/permissions', { perm: 'admin.empresas' }, async (ctx) 
 
 router.get('/api/platform/team', { perm: 'admin.empresas' }, async (ctx) => {
   requirePlatform(ctx, 'plataforma.equipe')
-  return db.many(`SELECT u.id, u.name, u.email, u.active, u.platform_owner, u.platform_permissions, u.platform_title, u.mfa_enabled, u.must_change_password, u.last_login_at, u.locked_until, u.created_at,
+  return db.many(`SELECT u.id, u.name, u.email, u.active, u.platform_owner, u.platform_permissions, u.platform_title, u.mfa_enabled, u.must_change_password, u.pending_activation, u.last_login_at, u.locked_until, u.created_at, ${INVITE_SQL('u.id')},
                          cb.name AS created_by_name,
                          (SELECT max(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id) AS last_seen_at,
                          (SELECT count(*)::int FROM sessions s WHERE s.user_id = u.id AND s.revoked_at IS NULL AND s.expires_at > now() AND s.stage = 'full') AS active_sessions,
@@ -43,24 +45,28 @@ const memberSchema = { name: v.string({ min: 3, max: 120 }), title: v.string({ m
 
 router.post('/api/platform/team', { perm: 'admin.empresas' }, async (ctx) => {
   requirePlatform(ctx, 'plataforma.equipe')
-  const b = parse(v.object({ ...memberSchema, email: v.email(), baseCompanyId: v.uuid().optional(), password: v.string({ trim: false }).optional() }), ctx.body)
+  const b = parse(v.object({ ...memberSchema, email: v.email(), baseCompanyId: v.uuid().optional(), password: v.string({ trim: false }).optional(), delivery: v.enum(['email', 'senha'] as const).optional() }), ctx.body)
+  const mode = resolveDelivery(b.password, b.delivery)
   if (b.owner && !ctx.user.platformOwner) throw forbidden('Somente um proprietário pode criar outro proprietário.')
   const perms = b.owner ? [] : [...new Set(b.permissions)]
   if (!b.owner) checkGrant(ctx, perms)
   const pwd = b.password || tempPassword()
   const pol = passwordPolicy(pwd); if (pol) throw unprocessable(pol)
-  return tx(async (c) => {
+  const res = await tx(async (c) => {
     if (await c.one(`SELECT 1 FROM users WHERE lower(email) = lower($1)`, [b.email])) throw conflict('Já existe um usuário com este e-mail. Use outro e-mail para o membro da equipe (contas de clientes não viram superadministrador).')
     const u = await c.one(`INSERT INTO users(name, email, password_hash, is_superadmin, platform_owner, platform_permissions, platform_title, must_change_password, created_by)
-                           VALUES ($1,$2,$3,true,$4,$5,$6,$7,$8) RETURNING id`, [b.name, b.email, hashPassword(pwd), b.owner, perms, b.title ?? null, !b.password, ctx.user.id])
+                           VALUES ($1,$2,$3,true,$4,$5,$6,$7,$8) RETURNING id`, [b.name, b.email, mode === 'email' ? unusablePasswordHash() : hashPassword(pwd), b.owner, perms, b.title ?? null, mode === 'senha', ctx.user.id])
+    if (mode === 'email') await c.query(`UPDATE users SET pending_activation = true WHERE id = $1`, [u.id])
     // empresa base: onde o agente entra quando não pode acessar empresas clientes (padrão: a empresa atual de quem cadastrou)
     const companyId = b.baseCompanyId ?? ctx.user.companyId
     const role = await c.one(`SELECT id FROM roles WHERE company_id = $1 AND name = 'Administrador'`, [companyId])
     if (!role) throw unprocessable('Empresa base sem perfil Administrador.')
     await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches) VALUES ($1,$2,$3,true) ON CONFLICT DO NOTHING`, [u.id, companyId, role.id])
-    await audit(c, ctx, 'plataforma.membro_criado', 'user', u.id, { name: b.name, email: b.email, owner: b.owner, permissions: perms }, 'critical')
-    return { id: u.id, temporaryPassword: b.password ? undefined : pwd }
+    await audit(c, ctx, 'plataforma.membro_criado', 'user', u.id, { name: b.name, email: b.email, owner: b.owner, permissions: perms, acesso: mode }, 'critical')
+    return { id: u.id as string }
   })
+  if (mode === 'email') return { id: res.id, ...(await inviteOrFallback(res.id, { createdBy: ctx.user.id, invitedBy: ctx.user.name })) }
+  return { id: res.id, temporaryPassword: mode === 'senha' ? pwd : undefined }
 })
 
 router.put('/api/platform/team/:id', { perm: 'admin.empresas' }, async (ctx) => {
@@ -94,8 +100,16 @@ router.put('/api/platform/team/:id', { perm: 'admin.empresas' }, async (ctx) => 
 router.post('/api/platform/team/:id/reset-password', { perm: 'admin.empresas' }, async (ctx) => {
   requirePlatform(ctx, 'plataforma.equipe')
   const t = await target(ctx.params.id, ctx)
+  const b = parse(v.object({ delivery: v.enum(['email', 'senha'] as const).optional() }), ctx.body || {})
+  if (resolveDelivery(undefined, b.delivery) === 'email') {
+    const u = await db.one(`SELECT pending_activation FROM users WHERE id = $1`, [t.id])
+    const kind = u.pending_activation ? 'ativacao' : 'redefinicao'
+    await audit(null, ctx, kind === 'ativacao' ? 'plataforma.convite_reenviado' : 'plataforma.link_redefinicao', 'user', t.id, null, 'critical')
+    return { invite: await sendActivation(t.id, kind, { createdBy: ctx.user.id, invitedBy: ctx.user.name }) }
+  }
   const temp = tempPassword()
-  await db.query(`UPDATE users SET password_hash = $2, must_change_password = true, failed_attempts = 0, locked_until = NULL, password_changed_at = now() WHERE id = $1`, [t.id, hashPassword(temp)])
+  await db.query(`UPDATE users SET password_hash = $2, must_change_password = true, pending_activation = false, failed_attempts = 0, locked_until = NULL, password_changed_at = now() WHERE id = $1`, [t.id, hashPassword(temp)])
+  await db.query(`UPDATE user_tokens SET revoked_at = now() WHERE user_id = $1 AND used_at IS NULL AND revoked_at IS NULL`, [t.id])
   await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [t.id])
   await audit(null, ctx, 'plataforma.senha_redefinida', 'user', t.id, null, 'critical')
   return { temporaryPassword: temp }

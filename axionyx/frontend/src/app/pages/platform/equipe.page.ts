@@ -6,6 +6,7 @@ import { Api } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ToastService } from '../../core/toast.service';
 import { FMT, initials } from '../../core/format';
+import { AccessChoiceComponent, AccessDialogComponent, AccessDelivery, deliveryBody } from '../../shared/access';
 
 interface Perm { key: string; group: string; label: string; description: string }
 const PRESETS: { id: string; label: string; desc: string; perms: string[] }[] = [
@@ -19,7 +20,7 @@ const PRESETS: { id: string; label: string; desc: string; perms: string[] }[] = 
 /** Equipe da plataforma: proprietários e agentes operacionais com permissões limitadas. */
 @Component({
   selector: 'ax-equipe',
-  imports: [FormsModule, IconComponent, ModalComponent, StateComponent, ...FMT],
+  imports: [FormsModule, IconComponent, ModalComponent, StateComponent, AccessChoiceComponent, AccessDialogComponent, ...FMT],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     .member { display:flex; gap:14px; align-items:flex-start; padding:14px 16px; border-bottom:1px solid #EEF2F6; }
@@ -53,6 +54,8 @@ const PRESETS: { id: string; label: string; desc: string; perms: string[] }[] = 
               @if (!m.active) { <span class="badge badge-danger">Desativado</span> }
               @if (m.id === me()) { <span class="badge badge-cyan">Você</span> }
               @if (m.must_change_password) { <span class="badge badge-warning">Senha temporária</span> }
+              @if (m.pending_activation) { <span class="badge badge-warning">Aguardando ativação</span> }
+              @if (m.last_email?.status === 'erro') { <span class="badge badge-danger" [title]="m.last_email.error">E-mail não enviado</span> }
               @if (!m.mfa_enabled) { <span class="badge badge-warning" title="Recomendado ativar a verificação em duas etapas">Sem MFA</span> }</div>
             <div style="font-size:12.5px;color:#4A5B6B;margin-top:2px">{{ m.email }} · último acesso {{ m.last_seen_at ? (m.last_seen_at | dtt) : 'nunca' }}{{ m.active_sessions ? ' · ' + m.active_sessions + ' sessão(ões) ativa(s)' : '' }}</div>
             <div class="muted" style="font-size:11.5px">Empresa base: {{ m.companies || '—' }}{{ m.created_by_name ? ' · cadastrado por ' + m.created_by_name : '' }}</div>
@@ -65,7 +68,7 @@ const PRESETS: { id: string; label: string; desc: string; perms: string[] }[] = 
             <div class="acts">
               <button class="btn-secondary" style="font-size:12px" (click)="openEdit(m)">Permissões</button>
               <button class="btn-ghost" style="font-size:12px" (click)="activity(m)">Atividade</button>
-              <button class="btn-ghost" style="font-size:12px" (click)="resetPw(m)">Nova senha</button>
+              <button class="btn-ghost" style="font-size:12px" (click)="resetPw(m)">{{ m.pending_activation ? 'Reenviar convite' : 'Acesso / senha' }}</button>
               @if (m.mfa_enabled) { <button class="btn-ghost" style="font-size:12px" (click)="resetMfa(m)">Zerar MFA</button> }
               <button class="btn-ghost" style="font-size:12px" [style.color]="m.active ? '#C93636' : '#18864B'" (click)="toggle(m)">{{ m.active ? 'Desativar' : 'Reativar' }}</button>
             </div>
@@ -104,15 +107,11 @@ const PRESETS: { id: string; label: string; desc: string; perms: string[] }[] = 
       }
       <div class="muted" style="font-size:11.5px;margin-top:6px">Permissões esmaecidas: você não pode conceder o que não tem. Alterações derrubam as sessões do membro para valerem na hora.</div>
     }
-    @if (!f.id) { <div style="font-size:12px;background:#F0F7FD;color:#0B4F8A;padding:8px 10px;border-radius:8px;margin-top:12px"><ax-icon name="info" [size]="12" /> O sistema gera uma senha temporária; o membro é obrigado a trocá-la no primeiro acesso.</div> }
+    @if (!f.id) { <div style="margin-top:12px"><ax-access-choice [(delivery)]="delivery" [(password)]="manualPwd" /></div> }
     <div footer><button class="btn-secondary" (click)="formOpen.set(false)">Cancelar</button><button class="btn-primary" (click)="save()" [disabled]="busy()">{{ f.id ? 'Salvar' : 'Cadastrar' }}</button></div>
   </ax-modal>
 
-  <ax-modal [(open)]="pwOpen" title="Senha temporária" icon="key" [width]="480" [dismissable]="false">
-    <p style="font-size:13px;margin-bottom:10px">Envie por um canal seguro para <b>{{ pwFor() }}</b>. Ela aparece só agora e deverá ser trocada no primeiro acesso.</p>
-    <div class="secret"><span>{{ pw() }}</span><button class="btn-ghost" style="font-size:11px" (click)="copy(pw())">Copiar</button></div>
-    <div footer><button class="btn-primary" (click)="pwOpen.set(false)">Concluir</button></div>
-  </ax-modal>
+  <ax-access-dialog [(open)]="accOpen" [user]="accUser()" [endpoint]="accEndpoint()" [result]="accResult()" (done)="load()" />
 
   <ax-modal [(open)]="actOpen" [title]="'Atividade de ' + (actFor()?.name || '')" icon="scroll-text" [width]="720">
     <div style="overflow-x:auto"><table class="data-table no-cards" style="width:100%;border-collapse:collapse"><thead><tr><th>Quando</th><th>Ação</th><th>Empresa</th><th>IP</th></tr></thead>
@@ -124,7 +123,9 @@ export class EquipePage implements OnInit {
   private api = inject(Api); private auth = inject(AuthService); private toast = inject(ToastService);
   readonly team = signal<any[]>([]); readonly perms = signal<Perm[]>([]); readonly companies = signal<any[]>([]); readonly loading = signal(true); readonly busy = signal(false);
   readonly formOpen = signal(false); readonly pwOpen = signal(false); readonly actOpen = signal(false);
-  readonly pw = signal(''); readonly pwFor = signal(''); readonly actFor = signal<any>(null); readonly acts = signal<any[]>([]);
+  readonly pw = signal(''); readonly pwFor = signal('');
+  readonly accOpen = signal(false); readonly accUser = signal<any>(null); readonly accEndpoint = signal<string | null>(null); readonly accResult = signal<any>(null);
+  readonly delivery = signal<AccessDelivery>('senha'); readonly manualPwd = signal(''); readonly actFor = signal<any>(null); readonly acts = signal<any[]>([]);
   readonly presets = PRESETS;
   f: any = { perms: new Set<string>() };
   readonly me = () => this.auth.me()?.user?.id;
@@ -139,7 +140,7 @@ export class EquipePage implements OnInit {
     this.companies.set(this.auth.me()?.companies ?? []);
   }
   async load() { this.loading.set(true); try { this.team.set(await this.api.get('/platform/team')); } catch (e) { this.toast.error(e); } finally { this.loading.set(false); } }
-  openNew() { this.f = { name: '', title: '', email: '', owner: false, baseCompanyId: this.auth.me()?.company?.id, perms: new Set<string>() }; this.formOpen.set(true); }
+  openNew() { this.f = { name: '', title: '', email: '', owner: false, baseCompanyId: this.auth.me()?.company?.id, perms: new Set<string>() }; this.manualPwd.set(''); this.formOpen.set(true); }
   openEdit(m: any) { this.f = { id: m.id, name: m.name, title: m.platform_title || '', owner: m.platform_owner, perms: new Set<string>(m.platform_permissions), original: new Set<string>(m.platform_permissions) }; this.formOpen.set(true); }
   togglePerm(k: string) {
     const s = new Set<string>(this.f.perms);
@@ -155,16 +156,14 @@ export class EquipePage implements OnInit {
     try {
       if (f.id) { await this.api.put('/platform/team/' + f.id, { name: f.name, title: f.title || undefined, permissions, ...(this.owner() ? { owner: !!f.owner } : {}) }); this.toast.success('Permissões atualizadas.'); }
       else {
-        const r = await this.api.post<any>('/platform/team', { name: f.name, title: f.title || undefined, email: f.email, permissions, owner: !!f.owner, baseCompanyId: f.baseCompanyId || undefined });
-        if (r.temporaryPassword) { this.pw.set(r.temporaryPassword); this.pwFor.set(f.email); this.pwOpen.set(true); }
+        if (this.delivery() === 'manual' && !this.manualPwd()) { this.toast.error('Informe a senha ou escolha outra forma de acesso.'); return; }
+        const r = await this.api.post<any>('/platform/team', { name: f.name, title: f.title || undefined, email: f.email, permissions, owner: !!f.owner, baseCompanyId: f.baseCompanyId || undefined, ...deliveryBody(this.delivery(), this.manualPwd()) });
+        if (r.invite || r.temporaryPassword) { this.accUser.set({ name: f.name, email: f.email }); this.accEndpoint.set(null); this.accResult.set(r); this.accOpen.set(true); }
       }
       this.formOpen.set(false); this.load();
     } catch (e) { this.toast.error(e); } finally { this.busy.set(false); }
   }
-  async resetPw(m: any) {
-    if (!confirm(`Gerar nova senha temporária para ${m.name}? As sessões dele serão encerradas.`)) return;
-    try { const r = await this.api.post<any>(`/platform/team/${m.id}/reset-password`, {}); this.pw.set(r.temporaryPassword); this.pwFor.set(m.email); this.pwOpen.set(true); this.load(); } catch (e) { this.toast.error(e); }
-  }
+  resetPw(m: any) { this.accUser.set(m); this.accResult.set(null); this.accEndpoint.set(`/platform/team/${m.id}/reset-password`); this.accOpen.set(true); }
   async resetMfa(m: any) {
     if (!confirm(`Desativar a verificação em duas etapas de ${m.name}?`)) return;
     try { await this.api.post(`/platform/team/${m.id}/reset-mfa`, {}); this.toast.success('MFA zerado.'); this.load(); } catch (e) { this.toast.error(e); }

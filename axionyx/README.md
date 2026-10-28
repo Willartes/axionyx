@@ -271,3 +271,11 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - **Painel da Clínica**: agenda do dia, sala de espera, espera média, atendimentos, faltas, pacientes novos, particular × convênio, receita particular, a faturar/aguardando/recebido, índice de glosa, produção por profissional e por especialidade.
 - Avisos no sino: pacientes na sala de espera, guias a faturar e lotes com pagamento atrasado.
 - Migração `015_saude.sql` só acrescenta tabelas e colunas e amplia listas de valores permitidos (tipos de registro e de comissão); nenhum dado existente é alterado.
+
+### 1.10.0 — Convite por e-mail com link de ativação
+- Novo usuário (Administração › Usuários), novo membro da Equipe da Plataforma e administrador do cliente aprovado na carteira recebem um **link de ativação** por e-mail e criam a própria senha — nenhuma senha aparece na tela nem vai por e-mail. Opções no cadastro: link por e-mail (padrão quando configurado), senha temporária ou senha definida na hora.
+- **Redefinição por link**: em Usuários › Senha (ou Equipe › Acesso / senha) escolha entre enviar link por e-mail ou gerar senha temporária. Lista mostra "Aguardando ativação" e falhas de envio; botão "Convite" reenvia o link.
+- Envio por **serviço transacional** (Resend ou Brevo, por HTTPS) ou **SMTP** do seu e-mail (no Railway, só no plano Pro). Cliente SMTP próprio com STARTTLS/TLS obrigatório, sem novas dependências.
+- Link de uso único, válido por 48 h (configurável), token guardado só como hash, sessões encerradas ao usar; se o envio falhar, alternativa automática por senha temporária.
+- Minha Carteira › **E-mail de convites**: situação da configuração, e-mail de teste e histórico de envios.
+- Migração `016_ativacao_email.sql` só acrescenta tabelas e uma coluna.

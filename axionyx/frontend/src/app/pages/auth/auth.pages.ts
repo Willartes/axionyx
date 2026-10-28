@@ -96,7 +96,7 @@ export class SplashPage implements OnInit {
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" name="remember" [(ngModel)]="remember" style="accent-color:#0875D1" /><span style="font-size:13px;color:#647687">Lembrar-me</span></label>
           <a (click)="forgot.set(true)" style="font-size:13px;color:#0875D1;text-decoration:none;cursor:pointer">Esqueci minha senha</a>
         </div>
-        @if (forgot()) { <div class="state-info"><ax-icon name="info" [size]="14" />A redefinição é feita pelo administrador da sua empresa em Administração › Usuários (gera senha temporária e registra auditoria).</div> }
+        @if (forgot()) { <div class="state-info"><ax-icon name="info" [size]="14" />Peça ao administrador da sua empresa (Administração › Usuários): ele envia um link de redefinição para o seu e-mail ou gera uma senha temporária.</div> }
         <button type="submit" class="btn-primary" [disabled]="busy()" style="width:100%;justify-content:center;padding:10px 0;margin-top:8px">
           @if (busy()) { <span class="spinner" style="border-color:rgba(255,255,255,.4);border-top-color:white"></span> } Entrar no AXIONYX
         </button>

@@ -10,6 +10,7 @@ export const NAV: NavSection[] = [
     { id: 'saas-cobrancas', label: 'Cobranças', icon: 'receipt', sa: 'carteira.ver' },
     { id: 'saas-planos', label: 'Planos', icon: 'tag', sa: 'carteira.ver' },
     { id: 'saas-gateway', label: 'Mercado Pago', icon: 'credit-card', sa: 'carteira.ver' },
+    { id: 'plataforma-email', label: 'E-mail de convites', icon: 'mail', sa: 'carteira.configurar', isNew: true },
     { id: 'plataforma-equipe', label: 'Equipe da Plataforma', icon: 'user-cog', sa: 'plataforma.equipe' },
   ]},
   { title: 'CORE', items: [
@@ -103,7 +104,7 @@ export const TITLES: Record<string, string[]> = {
   relatorios: ['Relatórios'], documentos: ['Documentos'], integracoes: ['Platform', 'Integrações'], whatsapp: ['Platform', 'Integrações', 'WhatsApp da empresa'], mensagens: ['Platform', 'Mensagens'], monitoramento: ['Platform', 'Monitoramento'], backup: ['Platform', 'Backup'],
   'admin-empresas': ['Administração', 'Empresas'], 'admin-usuarios': ['Administração', 'Usuários'], 'admin-permissoes': ['Administração', 'Permissões'], 'admin-modulos': ['Administração', 'Módulos'],
   'saas-carteira': ['Minha Carteira', 'Painel'], 'saas-clientes': ['Minha Carteira', 'Clientes e Contratos'], 'saas-auditoria': ['Minha Carteira', 'Auditoria de Assinaturas'],
-  'saas-cobrancas': ['Minha Carteira', 'Cobranças'], 'saas-planos': ['Minha Carteira', 'Planos'], 'saas-gateway': ['Minha Carteira', 'Mercado Pago'], 'plataforma-equipe': ['Minha Carteira', 'Equipe da Plataforma'], 'minha-assinatura': ['Minha assinatura'],
+  'saas-cobrancas': ['Minha Carteira', 'Cobranças'], 'saas-planos': ['Minha Carteira', 'Planos'], 'saas-gateway': ['Minha Carteira', 'Mercado Pago'], 'plataforma-email': ['Minha Carteira', 'E-mail de convites'], 'plataforma-equipe': ['Minha Carteira', 'Equipe da Plataforma'], 'minha-assinatura': ['Minha assinatura'],
   auditoria: ['Auditoria'], configuracoes: ['Configurações'], logs: ['Logs do Sistema'], 'sem-permissao': ['Acesso negado'],
 };
 

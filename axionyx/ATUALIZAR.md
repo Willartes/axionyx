@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.9.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.10.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.9.0: clinicas e consultorios de saude"
+git commit -m "AXIONYX 1.10.0: convite por e-mail com link de ativacao"
 git push origin main
 ```
 
@@ -40,4 +40,6 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 **1.8.0**: nova migração `014_oficina.sql` (aplicada sozinha). Só **cria tabelas** (veículos, ordens de serviço, itens, histórico, lembretes) e **acrescenta colunas** (`products.return_km`, `sale_items.work_order_item_id`); também concede as permissões da oficina aos perfis padrão. Nenhum cadastro existente é alterado. Para usar: crie a empresa com o segmento "Oficina mecânica" ou troque o segmento de uma empresa em Administração › Módulos.
 
 **1.9.0**: nova migração `015_saude.sql` (aplicada sozinha ao iniciar a API). Só **cria tabelas** (convênios, tabela de preços, perfil de saúde do paciente, guias, lotes, documentos clínicos), **acrescenta colunas** (conselho do profissional, nome social/CNS do paciente, dados de convênio e teleconsulta no agendamento, sigilo/CID/sinais vitais no prontuário) e **amplia** as listas de tipos de registro clínico e de comissão. Concede as novas permissões (convênios e documentos clínicos) aos perfis padrão. Registros existentes do prontuário continuam visíveis para a equipe, como antes. Para usar: crie a empresa com o segmento "Clínicas e consultórios de saúde" ou aplique o segmento em Administração › Módulos (os perfis Recepcionista e Gerente da clínica são criados nesse momento).
+
+**1.10.0**: nova migração `016_ativacao_email.sql` (aplicada sozinha). Só **cria tabelas** (`user_tokens`, `email_log`) e **acrescenta** a coluna `users.pending_activation` (falso para todos os usuários atuais). Ninguém perde acesso. Sem as variáveis de e-mail, tudo continua como antes (senha temporária). Para ativar os convites: configure as variáveis da seção 8 de `docs/INTEGRACOES.md` (Resend/Brevo ou SMTP, `EMAIL_FROM` e `APP_PUBLIC_URL`) e confira em Minha Carteira › E-mail de convites.
 

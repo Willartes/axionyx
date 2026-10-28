@@ -8,6 +8,7 @@ import { PERMISSIONS, ALL_PERMISSIONS } from '../core/permissions'
 import { bootstrapCompany } from '../services/bootstrap'
 import { getSettings, sanitizeSettings } from '../services/settings'
 import { requirePlatform } from '../core/platform'
+import { sendActivation, inviteOrFallback, emailDeliveryAvailable, unusablePasswordHash, INVITE_SQL } from '../services/activation'
 
 const address = v.object({ cep: v.string().optional(), logradouro: v.string().optional(), numero: v.string().optional(), complemento: v.string().optional(),
   bairro: v.string().optional(), cidade: v.string().optional(), uf: v.string({ max: 2 }).optional(), codigoMunicipio: v.string({ max: 7 }).optional() }).optional()
@@ -92,7 +93,7 @@ router.get('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
   // o superadministrador (suporte da plataforma) não aparece nem conta como usuário da empresa cliente
   w.add('NOT u.is_superadmin')
   if (ctx.query.q) w.add('(u.name ILIKE ? OR u.email ILIKE ?)', `%${ctx.query.q}%`, `%${ctx.query.q}%`)
-  return paged(db, `SELECT u.id, u.name, u.email, u.active AND uc.active AS active, u.mfa_enabled, u.last_login_at, u.locked_until, u.created_at, r.id AS role_id, r.name AS role,
+  return paged(db, `SELECT u.id, u.name, u.email, u.active AND uc.active AS active, u.mfa_enabled, u.last_login_at, u.locked_until, u.created_at, r.id AS role_id, r.name AS role, u.pending_activation, u.must_change_password, ${INVITE_SQL('u.id')},
                            uc.all_branches, uc.is_seller, uc.commission_pct,
                            COALESCE((SELECT array_agg(ub.branch_id) FROM user_branches ub WHERE ub.user_id = u.id AND ub.company_id = uc.company_id), '{}') AS branch_ids,
                            COALESCE((SELECT string_agg(b.name, ', ') FROM user_branches ub JOIN branches b ON b.id = ub.branch_id WHERE ub.user_id = u.id AND ub.company_id = uc.company_id), '') AS branches
@@ -100,7 +101,17 @@ router.get('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
 })
 
 const userSchema = { name: v.string({ min: 3, max: 120 }), email: v.email(), roleId: v.uuid(), allBranches: v.boolean().default(false), branchIds: v.array(v.uuid()).default([]),
-  isSeller: v.boolean().default(false), commissionPct: v.number({ min: 0, max: 100 }).optional(), password: v.string({ trim: false }).optional() }
+  isSeller: v.boolean().default(false), commissionPct: v.number({ min: 0, max: 100 }).optional(), password: v.string({ trim: false }).optional(),
+  /** email = link de ativação por e-mail; senha = senha temporária mostrada na tela. Padrão: e-mail quando configurado. */
+  delivery: v.enum(['email', 'senha'] as const).optional() }
+
+/** Forma de entrega do acesso: senha definida pelo administrador, link por e-mail ou senha temporária. */
+export function resolveDelivery(password: string | undefined, delivery: 'email' | 'senha' | undefined): 'manual' | 'email' | 'senha' {
+  if (password) return 'manual'
+  const d = delivery ?? (emailDeliveryAvailable() ? 'email' : 'senha')
+  if (d === 'email' && !emailDeliveryAvailable()) throw unprocessable('O envio de e-mail não está configurado (variáveis EMAIL_FROM e do provedor, e APP_PUBLIC_URL). Gere uma senha temporária ou peça ao suporte para configurar o e-mail.')
+  return d
+}
 
 async function saveBranches(c: any, companyId: string, userId: string, all: boolean, ids: string[]) {
   await c.query(`DELETE FROM user_branches WHERE user_id = $1 AND company_id = $2`, [userId, companyId])
@@ -113,9 +124,10 @@ async function saveBranches(c: any, companyId: string, userId: string, all: bool
 
 router.post('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
   const b = parse(v.object(userSchema), ctx.body)
+  const mode = resolveDelivery(b.password, b.delivery)
   const temp = b.password || `Ax${randomCode(6)}${Math.floor(Math.random() * 90 + 10)}`
   const pol = passwordPolicy(temp); if (pol) throw unprocessable(pol)
-  return tx(async (c) => {
+  const res = await tx(async (c) => {
     const role = await c.one(`SELECT id, permissions FROM roles WHERE id = $1 AND company_id = $2`, [b.roleId, ctx.user.companyId])
     if (!role) throw unprocessable('Perfil inválido.')
     if ((role.permissions as string[]).some((p) => p.startsWith('admin.')) && !can(ctx.user, 'admin.perfis')) throw forbidden('Você não pode atribuir um perfil administrativo.')
@@ -124,14 +136,21 @@ router.post('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
       const linked = await c.one(`SELECT 1 FROM user_companies WHERE user_id = $1 AND company_id = $2`, [u.id, ctx.user.companyId])
       if (linked) throw conflict('Usuário já vinculado a esta empresa.')
     } else {
-      u = await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,$4) RETURNING id`, [b.name, b.email, hashPassword(temp), !b.password])
+      u = mode === 'email'
+        ? await c.one(`INSERT INTO users(name, email, password_hash, must_change_password, pending_activation) VALUES ($1,$2,$3,false,true) RETURNING id`, [b.name, b.email, unusablePasswordHash()])
+        : await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,$4) RETURNING id`, [b.name, b.email, hashPassword(temp), mode === 'senha'])
+      u.created = true
     }
     await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches, is_seller, commission_pct) VALUES ($1,$2,$3,$4,$5,$6)`,
       [u.id, ctx.user.companyId, b.roleId, b.allBranches, b.isSeller, b.commissionPct ?? null])
     await saveBranches(c, ctx.user.companyId, u.id, b.allBranches, b.branchIds)
-    await audit(c, ctx, 'usuario.criado', 'user', u.id, { name: b.name, email: b.email, roleId: b.roleId }, 'warning')
-    return { id: u.id, temporaryPassword: b.password ? undefined : temp }
+    await audit(c, ctx, 'usuario.criado', 'user', u.id, { name: b.name, email: b.email, roleId: b.roleId, acesso: u.created ? mode : 'conta_existente' }, 'warning')
+    return { id: u.id as string, created: !!u.created }
   })
+  // conta que já existia (outra empresa): só vincula, a senha dela não muda
+  if (!res.created) return { id: res.id, linkedExisting: true }
+  if (mode === 'email') return { id: res.id, ...(await inviteOrFallback(res.id, { companyId: ctx.user.companyId, createdBy: ctx.user.id, invitedBy: ctx.user.name })) }
+  return { id: res.id, temporaryPassword: mode === 'senha' ? temp : undefined }
 })
 
 router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
@@ -156,8 +175,17 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
 router.post('/api/admin/users/:id/reset-password', { perm: 'admin.usuarios' }, async (ctx) => {
   const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)`, [ctx.params.id, ctx.user.companyId])
   if (!linked) throw notFound('Usuário')
+  const b = parse(v.object({ delivery: v.enum(['email', 'senha'] as const).optional() }), ctx.body || {})
+  if (resolveDelivery(undefined, b.delivery) === 'email') {
+    // link por e-mail: a senha atual continua valendo até a pessoa usar o link (o uso do link encerra as sessões)
+    const u = await db.one(`SELECT pending_activation FROM users WHERE id = $1`, [ctx.params.id])
+    const kind = u.pending_activation ? 'ativacao' : 'redefinicao'
+    await audit(null, ctx, kind === 'ativacao' ? 'usuario.convite_reenviado' : 'usuario.link_redefinicao', 'user', ctx.params.id, null, 'warning')
+    return { invite: await sendActivation(ctx.params.id, kind, { companyId: ctx.user.companyId, createdBy: ctx.user.id, invitedBy: ctx.user.name }) }
+  }
   const temp = `Ax${randomCode(6)}${Math.floor(Math.random() * 90 + 10)}`
-  await db.query(`UPDATE users SET password_hash = $2, failed_attempts = 0, locked_until = NULL, password_changed_at = now(), must_change_password = true WHERE id = $1`, [ctx.params.id, hashPassword(temp)])
+  await db.query(`UPDATE users SET password_hash = $2, failed_attempts = 0, locked_until = NULL, password_changed_at = now(), must_change_password = true, pending_activation = false WHERE id = $1`, [ctx.params.id, hashPassword(temp)])
+  await db.query(`UPDATE user_tokens SET revoked_at = now() WHERE user_id = $1 AND used_at IS NULL AND revoked_at IS NULL`, [ctx.params.id])
   await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [ctx.params.id])
   await audit(null, ctx, 'usuario.senha_redefinida', 'user', ctx.params.id, null, 'critical')
   return { temporaryPassword: temp }

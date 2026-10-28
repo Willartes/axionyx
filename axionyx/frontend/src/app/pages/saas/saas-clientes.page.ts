@@ -241,10 +241,12 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
   </ax-modal>
   <ax-modal [(open)]="resOpen" title="Proposta aprovada" icon="check-circle-2" [width]="600" [dismissable]="false">
     @if (res(); as r) {
-      <p style="font-size:13px;margin-bottom:10px">Empresa criada. Envie ao cliente os dados abaixo — <b>a senha temporária aparece só agora</b>.</p>
+      <p style="font-size:13px;margin-bottom:10px">Empresa criada.{{ r.tempPassword ? ' Envie ao cliente os dados abaixo — a senha temporária aparece só agora.' : '' }}</p>
       <label class="field-label">Login</label><div class="secret" style="font-size:13px;margin-bottom:8px"><span>{{ r.adminEmail }}</span></div>
+      @if (r.invite?.sent) { <div style="font-size:12.5px;background:#E8F6EE;color:#145C36;padding:8px 10px;border-radius:8px;margin-bottom:8px"><ax-icon name="mail-check" [size]="13" /> Link de ativação enviado para {{ r.invite.to }}: o cliente cria a própria senha pelo e-mail.</div> }
+      @else if (r.invite && !r.invite.sent) { <div style="font-size:12.5px;color:#8A5B00;background:#FFF7E6;padding:8px 10px;border-radius:8px;margin-bottom:8px">E-mail de ativação não enviado ({{ r.invite.error }}). Use a senha temporária abaixo.</div> }
       @if (r.tempPassword) { <label class="field-label">Senha temporária</label><div class="secret" style="margin-bottom:8px"><span>{{ r.tempPassword }}</span><button class="btn-ghost" style="font-size:11px" (click)="copy(r.tempPassword)">Copiar</button></div> }
-      @else { <div style="font-size:12.5px;margin-bottom:8px" class="muted">O e-mail já tinha usuário no AXIONYX: ele entra com a senha atual.</div> }
+      @else if (!r.invite?.sent) { <div style="font-size:12.5px;margin-bottom:8px" class="muted">O e-mail já tinha usuário no AXIONYX: ele entra com a senha atual.</div> }
       <label class="field-label">Link de pagamento</label>
       @if (r.checkoutUrl) { <div class="secret" style="font-size:12px;margin-bottom:8px"><span>{{ r.checkoutUrl }}</span><button class="btn-ghost" style="font-size:11px" (click)="copy(r.checkoutUrl)">Copiar</button></div> }
       @else { <div style="font-size:12.5px;color:#8A5B00;background:#FFF7E6;padding:8px 10px;border-radius:8px;margin-bottom:8px">{{ r.gatewayError ? 'Mercado Pago: ' + r.gatewayError : 'Mercado Pago não configurado — o cliente também vê a cobrança em "Minha assinatura". Você pode dar baixa manual se ele pagar por fora.' }}</div> }
@@ -398,7 +400,9 @@ export class SaasClientesPage implements OnInit {
     const k = this.det();
     return `Olá, ${k?.contact_name?.split(' ')[0] || ''}! Sua assinatura do AXIONYX foi aprovada.\n\n` +
       (r.checkoutUrl ? `1) Pague a primeira mensalidade (${brl(k?.price)}) com Pix ou cartão: ${r.checkoutUrl}\n` : `1) Pagamento da primeira mensalidade: ${brl(k?.price)} (enviaremos as instruções).\n`) +
-      `2) O acesso é liberado automaticamente após a confirmação do pagamento.\n3) Entre em ${location.origin}/login com o e-mail ${r.adminEmail}` + (r.tempPassword ? ` e a senha temporária ${r.tempPassword} (troque no primeiro acesso).` : ' e sua senha atual.') +
+      `2) O acesso é liberado automaticamente após a confirmação do pagamento.\n` +
+      (r.invite?.sent ? `3) Enviamos para ${r.adminEmail} um e-mail com o link para você criar sua senha (veja também a caixa de spam). Depois, entre em ${location.origin}/login.`
+        : `3) Entre em ${location.origin}/login com o e-mail ${r.adminEmail}` + (r.tempPassword ? ` e a senha temporária ${r.tempPassword} (troque no primeiro acesso).` : ' e sua senha atual.')) +
       `\n\nQualquer dúvida, estamos à disposição.`;
   }
   async reRisk() { try { const r = await this.api.post<any>(`/saas/contracts/${this.det().id}/risk`, {}); this.toast.info(`Risco: ${RISK[r.level].label.toLowerCase()}.`); await this.reload(); } catch (e) { this.toast.error(e); } }

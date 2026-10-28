@@ -82,5 +82,5 @@ router.get('/api/health', { auth: 'none' }, async () => {
   const t0 = Date.now()
   await db.query('SELECT 1')
   const m = await db.one(`SELECT count(*)::int AS n FROM schema_migrations`)
-  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.9.0' }
+  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.10.0' }
 })

@@ -1,3 +1,4 @@
+import { AccessChoiceComponent, AccessDialogComponent, AccessDelivery, deliveryBody } from '../../shared/access';
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -147,7 +148,7 @@ export class AdminEmpresasPage implements OnInit {
 // ─── Usuários ──────────────────────────────────────────────────────────────
 @Component({
   selector: 'ax-admin-usuarios',
-  imports: [FormsModule, IconComponent, ModalComponent, PagerComponent, StateComponent, ...FMT],
+  imports: [FormsModule, IconComponent, ModalComponent, PagerComponent, StateComponent, AccessChoiceComponent, AccessDialogComponent, ...FMT],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div style="display:flex;flex-direction:column;height:100%">
@@ -168,10 +169,11 @@ export class AdminEmpresasPage implements OnInit {
             <td style="font-size:12px">{{ u.all_branches ? 'Todas' : (u.branches || '—') }}</td>
             <td>@if (u.mfa_enabled) { <ax-icon name="shield-check" [size]="14" color="#18864B" /> } @else { <span class="muted" style="font-size:11px">não</span> }</td>
             <td class="mono" style="font-size:12px">{{ u.last_login_at | dtt }}</td>
-            <td>@if (locked(u)) { <span class="badge badge-danger">Bloqueado</span> } @else { <span class="badge" [class]="u.active ? 'badge badge-success' : 'badge badge-muted'">{{ u.active ? 'Ativo' : 'Inativo' }}</span> }</td>
+            <td>@if (locked(u)) { <span class="badge badge-danger">Bloqueado</span> } @else if (u.pending_activation && u.active) { <span class="badge badge-warning" [title]="inviteTitle(u)">Aguardando ativação</span> } @else { <span class="badge" [class]="u.active ? 'badge badge-success' : 'badge badge-muted'">{{ u.active ? 'Ativo' : 'Inativo' }}</span> }
+              @if (u.last_email?.status === 'erro') { <div style="font-size:10.5px;color:#C93636" [title]="u.last_email.error">e-mail não enviado</div> }</td>
             <td><div style="display:flex;gap:4px">
               <button class="btn-ghost" style="padding:3px 5px" (click)="edit(u)" aria-label="Editar"><ax-icon name="pencil" [size]="13" /></button>
-              <button class="btn-ghost" style="padding:3px 5px;font-size:11px" (click)="resetPwd(u)">Senha</button>
+              <button class="btn-ghost" style="padding:3px 5px;font-size:11px" (click)="resetPwd(u)">{{ u.pending_activation ? 'Convite' : 'Senha' }}</button>
               @if (u.mfa_enabled) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px" (click)="resetMfa(u)">Zerar MFA</button> }
               @if (u.id !== auth.me()?.user?.id) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px" [style.color]="u.active ? '#C93636' : '#18864B'" (click)="toggle(u)">{{ u.active ? 'Desativar' : 'Ativar' }}</button> }
             </div></td>
@@ -192,20 +194,19 @@ export class AdminEmpresasPage implements OnInit {
       <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" [(ngModel)]="f.allBranches" /> Acesso a todas as filiais</label>
       @if (!f.allBranches) { <div class="span-all"><label class="field-label">Filiais permitidas *</label><div style="display:flex;gap:12px;flex-wrap:wrap">
         @for (b of lk.data()?.branches ?? []; track b.id) { <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" [checked]="f.branchIds.includes(b.id)" (change)="toggleBr(b.id)" /> {{ b.name }}</label> }</div></div> }
-      @if (!f.id) { <div class="span-all"><label class="field-label">Senha inicial (opcional)</label><input type="password" class="input-field" [(ngModel)]="f.password" autocomplete="new-password" placeholder="em branco = gerar senha temporária" /></div> }
+      @if (!f.id) { <div class="span-all"><ax-access-choice [(delivery)]="delivery" [(password)]="manualPwd" /></div> }
     </div>
     <div footer><button class="btn-secondary" (click)="open.set(false)">Cancelar</button><button class="btn-primary" (click)="save()">Salvar</button></div>
   </ax-modal>
-  <ax-modal [(open)]="tempOpen" title="Senha temporária" icon="key" [width]="420">
-    <p style="font-size:13px;margin-bottom:10px">Repasse a senha ao usuário por canal seguro. Ela não será exibida novamente; recomende a troca no primeiro acesso (Configurações → Segurança).</p>
-    <div class="mono" style="font-size:20px;font-weight:700;text-align:center;background:#F4F7FA;padding:12px;border-radius:6px;user-select:all">{{ temp() }}</div>
-    <div footer><button class="btn-primary" (click)="tempOpen.set(false)">Entendi</button></div>
-  </ax-modal>`,
+  <ax-access-dialog [(open)]="accOpen" [user]="accUser()" [endpoint]="accEndpoint()" [result]="accResult()" (done)="list.reload()" />`,
 })
 export class AdminUsuariosPage implements OnInit {
   private api = inject(Api); readonly router = inject(Router); readonly auth = inject(AuthService); private toast = inject(ToastService); readonly lk = inject(LookupsService);
   readonly list = new ListState<any>((q) => this.api.get('/admin/users', q));
-  readonly roles = signal<any[]>([]); readonly open = signal(false); readonly tempOpen = signal(false); readonly temp = signal('');
+  readonly roles = signal<any[]>([]); readonly open = signal(false);
+  readonly accOpen = signal(false); readonly accUser = signal<any>(null); readonly accEndpoint = signal<string | null>(null); readonly accResult = signal<any>(null);
+  readonly delivery = signal<AccessDelivery>('senha'); readonly manualPwd = signal('');
+  inviteTitle(u: any) { return u.last_email ? `Último e-mail: ${u.last_email.status} em ${new Date(u.last_email.at).toLocaleString('pt-BR')}` : ''; }
   q = ''; f: any = { branchIds: [] };
   readonly activeCount = computed(() => this.list.items().filter((u) => u.active).length);
   ngOnInit() { this.lk.ensure(); this.list.load(); this.api.get<any[]>('/admin/roles').then((r) => this.roles.set(r)); }
@@ -213,19 +214,23 @@ export class AdminUsuariosPage implements OnInit {
   locked(u: any) { return u.locked_until && new Date(u.locked_until) > new Date(); }
   search() { this.list.query = { q: this.q || undefined }; this.list.load(1); }
   edit(u: any) { this.f = u ? { id: u.id, name: u.name, email: u.email, roleId: u.role_id, isSeller: u.is_seller, allBranches: u.all_branches, branchIds: [...(u.branch_ids || [])], commissionPct: u.commission_pct }
-    : { name: '', email: '', roleId: this.roles().find((r) => r.name === 'Vendedor')?.id ?? this.roles()[0]?.id, isSeller: false, allBranches: false, branchIds: [this.auth.me()?.branch?.id].filter(Boolean), commissionPct: null, password: '' }; this.open.set(true); }
+    : { name: '', email: '', roleId: this.roles().find((r) => r.name === 'Vendedor')?.id ?? this.roles()[0]?.id, isSeller: false, allBranches: false, branchIds: [this.auth.me()?.branch?.id].filter(Boolean), commissionPct: null }; this.manualPwd.set(''); this.open.set(true); }
   toggleBr(id: string) { this.f.branchIds = this.f.branchIds.includes(id) ? this.f.branchIds.filter((x: string) => x !== id) : [...this.f.branchIds, id]; }
   async save() {
     const f = this.f; const body: any = { name: f.name, roleId: f.roleId, isSeller: !!f.isSeller, allBranches: !!f.allBranches, branchIds: f.allBranches ? [] : f.branchIds };
     if (f.commissionPct !== null && f.commissionPct !== '' && f.commissionPct !== undefined) body.commissionPct = +f.commissionPct;
     try {
       if (f.id) await this.api.put('/admin/users/' + f.id, body);
-      else { const r: any = await this.api.post('/admin/users', { ...body, email: f.email, password: f.password || undefined }); if (r.temporaryPassword) { this.temp.set(r.temporaryPassword); this.tempOpen.set(true); } }
+      else {
+        if (this.delivery() === 'manual' && !this.manualPwd()) { this.toast.error('Informe a senha ou escolha outra forma de acesso.'); return; }
+        const r: any = await this.api.post('/admin/users', { ...body, email: f.email, ...deliveryBody(this.delivery(), this.manualPwd()) });
+        if (r.invite || r.temporaryPassword || r.linkedExisting) { this.accUser.set({ name: f.name, email: f.email }); this.accEndpoint.set(null); this.accResult.set(r); this.accOpen.set(true); }
+      }
       this.toast.success('Usuário salvo.'); this.open.set(false); this.list.reload(); this.lk.invalidate();
     } catch (e) { this.toast.error(e); }
   }
   async toggle(u: any) { try { await this.api.put('/admin/users/' + u.id, { active: !u.active }); this.list.reload(); } catch (e) { this.toast.error(e); } }
-  async resetPwd(u: any) { if (!confirm(`Gerar nova senha temporária para ${u.name}? As sessões abertas serão encerradas.`)) return; try { const r: any = await this.api.post(`/admin/users/${u.id}/reset-password`); this.temp.set(r.temporaryPassword); this.tempOpen.set(true); this.list.reload(); } catch (e) { this.toast.error(e); } }
+  resetPwd(u: any) { this.accUser.set(u); this.accResult.set(null); this.accEndpoint.set(`/admin/users/${u.id}/reset-password`); this.accOpen.set(true); }
   async resetMfa(u: any) { if (!confirm(`Desativar a autenticação em dois fatores de ${u.name}?`)) return; try { await this.api.post(`/admin/users/${u.id}/reset-mfa`); this.toast.success('MFA redefinido.'); this.list.reload(); } catch (e) { this.toast.error(e); } }
 }
 

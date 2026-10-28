@@ -1,3 +1,5 @@
+import { sendActivation, inviteOrFallback, unusablePasswordHash } from '../services/activation'
+import { resolveDelivery } from './admin'
 import { router, audit, paged, Where, Ctx, today, addMonths, r2 } from '../core/http'
 import { db, tx } from '../core/db'
 import { v, parse, onlyDigits, isValidCNPJ, isValidCPF } from '../core/validate'
@@ -228,7 +230,8 @@ router.post('/api/saas/contracts/:id/risk', SA, async (ctx) => {
  */
 router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
   sa(ctx, 'carteira.aprovar')
-  const b = parse(v.object({ note: v.string({ max: 1000 }).optional(), branchName: v.string({ min: 2, max: 100 }).default('Matriz') }), ctx.body)
+  const b = parse(v.object({ note: v.string({ max: 1000 }).optional(), branchName: v.string({ min: 2, max: 100 }).default('Matriz'), delivery: v.enum(['email', 'senha'] as const).optional() }), ctx.body)
+  const byEmail = resolveDelivery(undefined, b.delivery) === 'email'
   const res = await tx(async (c) => {
     const k = await c.one(`SELECT * FROM saas_contracts WHERE id = $1 FOR UPDATE`, [ctx.params.id])
     if (!k) throw notFound('Contrato')
@@ -243,9 +246,16 @@ router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
     let tempPassword: string | undefined
     let u = await c.one(`SELECT id, is_superadmin FROM users WHERE lower(email) = lower($1)`, [k.contact_email])
     if (u?.is_superadmin) throw unprocessable('O e-mail do responsável pertence a um superadministrador. Use outro e-mail.')
+    let invite = false
     if (!u) {
-      tempPassword = `Ax${randomCode(6)}${Math.floor(Math.random() * 90 + 10)}`
-      u = await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,true) RETURNING id`, [k.contact_name, k.contact_email, hashPassword(tempPassword)])
+      if (byEmail) {
+        // administrador do cliente recebe o link de ativação por e-mail (nenhuma senha trafega)
+        u = await c.one(`INSERT INTO users(name, email, password_hash, must_change_password, pending_activation) VALUES ($1,$2,$3,false,true) RETURNING id`, [k.contact_name, k.contact_email, unusablePasswordHash()])
+        invite = true
+      } else {
+        tempPassword = `Ax${randomCode(6)}${Math.floor(Math.random() * 90 + 10)}`
+        u = await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,true) RETURNING id`, [k.contact_name, k.contact_email, hashPassword(tempPassword)])
+      }
     }
     await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches) VALUES ($1,$2,$3,true) ON CONFLICT DO NOTHING`, [u!.id, r.company.id, r.roles['Administrador']])
     let kk = await c.one(`UPDATE saas_contracts SET company_id = $2, reviewed_by = $3, reviewed_at = now(), review_note = $4, updated_at = now() WHERE id = $1 RETURNING *`, [k.id, r.company.id, ctx.user.id, b.note ?? null])
@@ -255,7 +265,7 @@ router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
     if (k.lead_id) await c.query(`UPDATE site_leads SET status = 'convertido', updated_at = now() WHERE id = $1`, [k.lead_id])
     const charge = await createCharge(c, kk, { kind: 'primeira', periodStart: today(), userId: ctx.user.id })
     await audit(c, ctx, 'saas.proposta_aprovada', 'saas_contract', k.id, { company: k.company_name, adminEmail: k.contact_email, note: b.note }, 'warning', { companyId: r.company.id })
-    return { contract: kk, chargeId: charge.id, companyId: r.company.id, adminEmail: k.contact_email, tempPassword }
+    return { contract: kk, chargeId: charge.id, companyId: r.company.id, adminEmail: k.contact_email, tempPassword, inviteUserId: invite ? (u!.id as string) : null }
   })
   // link de pagamento fora da transação (chamada externa)
   let checkoutUrl: string | null = null, gatewayError: string | undefined
@@ -268,7 +278,8 @@ router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
       checkoutUrl = pre.url
     } else checkoutUrl = await ensureCheckout(res.chargeId)
   } catch (e: any) { gatewayError = e.message }
-  return { ...res, checkoutUrl, gatewayConfigured: mercadopago().configured(), gatewayError }
+  const inv = res.inviteUserId ? await inviteOrFallback(res.inviteUserId, { companyId: res.companyId, createdBy: ctx.user.id, invitedBy: null }) : null
+  return { ...res, tempPassword: res.tempPassword ?? inv?.temporaryPassword, checkoutUrl, gatewayConfigured: mercadopago().configured(), gatewayError, invite: inv?.invite ?? null }
 })
 
 router.post('/api/saas/contracts/:id/reject', SA, async (ctx) => {

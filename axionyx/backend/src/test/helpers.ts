@@ -10,7 +10,7 @@ if (!/_test(\?|$)/.test(new URL(testUrl).pathname + (new URL(testUrl).search ? '
 process.env.DATABASE_URL = testUrl
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'teste-' + 'x'.repeat(40)
 process.env.RUN_WORKER = 'false'
-for (const k of ['FISCAL_PROVIDER', 'FISCAL_PROVIDER_URL', 'FISCAL_PROVIDER_TOKEN', 'WHATSAPP_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'ECOMMERCE_API_URL', 'ECOMMERCE_API_TOKEN', 'LOGISTICS_API_URL', 'LOGISTICS_API_TOKEN', 'MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'APP_PUBLIC_URL']) delete process.env[k]
+for (const k of ['FISCAL_PROVIDER', 'FISCAL_PROVIDER_URL', 'FISCAL_PROVIDER_TOKEN', 'WHATSAPP_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'ECOMMERCE_API_URL', 'ECOMMERCE_API_TOKEN', 'LOGISTICS_API_URL', 'LOGISTICS_API_TOKEN', 'MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET', 'APP_PUBLIC_URL', 'EMAIL_PROVIDER', 'EMAIL_FROM', 'EMAIL_FROM_NAME', 'RESEND_API_KEY', 'BREVO_API_KEY', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_SECURE', 'ACTIVATION_HOURS']) delete process.env[k]
 process.env.CNPJ_LOOKUP = 'off'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
