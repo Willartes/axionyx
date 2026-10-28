@@ -249,6 +249,19 @@ html, body {
   display: none;
 }
 
+/* Trilha de navegação (breadcrumbs) clicável */
+.app-breadcrumbs .crumb-wrap { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.app-breadcrumbs .crumb { white-space: nowrap; }
+.app-breadcrumbs a.crumb { color: #647687; text-decoration: none; border-radius: 4px; padding: 1px 3px; margin: 0 -3px; display: inline-flex; align-items: center; gap: 2px; }
+.app-breadcrumbs a.crumb:hover { color: #0875D1; background: #EEF5FC; text-decoration: underline; text-underline-offset: 2px; }
+.app-breadcrumbs a.crumb:focus-visible { outline: 2px solid #0875D1; outline-offset: 1px; }
+.app-breadcrumbs .crumb-back { display: none !important; }
+.app-breadcrumbs .crumb-home { color: #647687; display: inline-flex; padding: 3px; }
+.app-breadcrumbs .crumb-home:hover { color: #0875D1; background: #EEF5FC; }
+.global-search-icon { display: none !important; }
+.search-cancel { display: none !important; }
+.search-input::-webkit-search-cancel-button, .search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+
 @media (max-width: 1100px) {
   .app-topbar {
     gap: 8px !important;
@@ -309,15 +322,37 @@ html, body {
     overflow: hidden;
   }
 
-  .app-breadcrumbs > span:not(:last-child) {
-    display: none !important;
+  /* celular: início + "‹ nível anterior" (clicável) + tela atual */
+  .app-breadcrumbs .crumb-wrap { display: none !important; }
+  .app-breadcrumbs .crumb-wrap.crumb-parent,
+  .app-breadcrumbs .crumb-wrap.crumb-last { display: flex !important; }
+  .app-breadcrumbs .crumb-wrap.crumb-parent .crumb-sep { display: none !important; }
+  .app-breadcrumbs .crumb-wrap.crumb-parent .crumb-back { display: inline-flex !important; }
+  .app-breadcrumbs .crumb-wrap.crumb-parent a.crumb { color: #0875D1; font-weight: 500; padding: 6px 4px; }
+  .app-breadcrumbs .crumb-wrap.crumb-last { overflow: hidden; }
+  .app-breadcrumbs .crumb-wrap.crumb-last .crumb { overflow: hidden; text-overflow: ellipsis; }
+  .app-breadcrumbs .crumb-home { padding: 8px 6px; }
+  .app-breadcrumbs { gap: 2px !important; }
+  .app-breadcrumbs .crumb-wrap.crumb-parent { margin-right: 6px; flex-shrink: 0; }
+  .app-breadcrumbs .crumb-wrap.crumb-parent a.crumb { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+  .app-breadcrumbs > button { display: none !important; } /* favoritar fica no computador */
+
+  .global-search-icon {
+    display: inline-flex !important;
+    padding: 8px !important;
+    color: #172B3A;
+    flex-shrink: 0;
   }
 
-  .app-breadcrumbs > span:last-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  /* pesquisa em tela cheia no celular */
+  .modal-backdrop.search-backdrop { align-items: stretch !important; padding: 0 !important; }
+  .modal.search-modal { max-width: none !important; width: 100% !important; height: 100% !important; max-height: none !important; border-radius: 0 !important; margin: 0 !important; display: flex; flex-direction: column; }
+  .search-modal .search-bar { padding: 10px 12px !important; position: sticky; top: 0; background: white; }
+  .search-modal .search-input { font-size: 16px !important; }
+  .search-modal .search-esc { display: none; }
+  .search-modal .search-cancel { display: inline-flex !important; color: #0875D1; font-size: 14px; padding: 8px 6px; }
+  .search-modal .search-results { max-height: none !important; flex: 1; }
+  .search-modal .autocomplete-item { padding: 13px 16px !important; font-size: 14.5px; border-bottom: 1px solid #F3F6F9; }
 
   .global-search,
   .period-context {

@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.10.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.10.1.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.10.0: convite por e-mail com link de ativacao"
+git commit -m "AXIONYX 1.10.1: trilha clicavel e pesquisa no celular"
 git push origin main
 ```
 
@@ -43,3 +43,4 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 
 **1.10.0**: nova migração `016_ativacao_email.sql` (aplicada sozinha). Só **cria tabelas** (`user_tokens`, `email_log`) e **acrescenta** a coluna `users.pending_activation` (falso para todos os usuários atuais). Ninguém perde acesso. Sem as variáveis de e-mail, tudo continua como antes (senha temporária). Para ativar os convites: configure as variáveis da seção 8 de `docs/INTEGRACOES.md` (Resend/Brevo ou SMTP, `EMAIL_FROM` e `APP_PUBLIC_URL`) e confira em Minha Carteira › E-mail de convites.
 
+**1.10.1**: só frontend (trilha de navegação clicável e pesquisa no celular) e número de versão — nenhuma migração, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba).

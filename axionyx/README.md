@@ -279,3 +279,8 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Link de uso único, válido por 48 h (configurável), token guardado só como hash, sessões encerradas ao usar; se o envio falhar, alternativa automática por senha temporária.
 - Minha Carteira › **E-mail de convites**: situação da configuração, e-mail de teste e histórico de envios.
 - Migração `016_ativacao_email.sql` só acrescenta tabelas e uma coluna.
+
+### 1.10.1 — Navegação: trilha clicável e pesquisa no celular
+- **Trilha de navegação clicável** em todas as telas: cada nível (ex.: Cadastros › Clientes › Ficha do Cliente) leva à tela correspondente, e o ícone de casa volta à página inicial. Só vira link o que o usuário pode abrir (mesmas regras de permissão e módulos do menu). Ctrl/⌘+clique abre em nova aba.
+- **Celular**: o cabeçalho mostra início, "‹ nível anterior" (para voltar com um toque) e a tela atual; **lupa de pesquisa** sempre visível, abrindo a pesquisa em tela cheia com teclado de busca, botão Cancelar, itens maiores para o toque e **acesso rápido** aos favoritos e telas recentes.
+- Somente frontend e versão — nenhuma migração.

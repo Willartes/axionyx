@@ -12,6 +12,13 @@ import { NAV, TITLES, ICON_OF, NavItem } from '../core/nav';
 import { initials, doc, DatePipe } from '../core/format';
 
 const LS_RECENT = 'axionyx.recent', LS_FAV = 'axionyx.favorites';
+/** Telas que dependem de um módulo ativo da empresa. */
+const MODULE_OF: Record<string, string> = { condicionais: 'condicional', consignacoes: 'consignacao', fidelidade: 'fidelidade', crm: 'crm', rh: 'rh', juridico: 'juridico', contabilidade: 'contabilidade', fiscal: 'fiscal', precificacao: 'precificacao', validade: 'validade', combos: 'combos',
+  agenda: 'agenda', servicos: 'agenda', profissionais: 'agenda', 'planos-tratamento': 'odontograma', 'inteligencia-servicos': 'agenda', oficina: 'oficina', veiculos: 'oficina', 'oficina-painel': 'oficina', recepcao: 'saude', convenios: 'saude', 'saude-painel': 'saude' };
+/** Níveis da trilha cujo destino não é a primeira tela da seção. */
+const CRUMB_OVERRIDES: Record<string, string[]> = {
+  Atendimento: ['recepcao', 'agenda'], Intelligence: ['intelligence'], 'Compras|Cotações': ['compras'], 'Compras|Entradas': ['recebimentos'],
+};
 const readLs = (k: string): string[] => { try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } };
 const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* indisponível */ } };
 
@@ -87,17 +94,23 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
           <ax-icon [name]="collapsed() ? 'panel-left-open' : 'panel-left-close'" [size]="16" />
         </button>
 
-        <div class="app-breadcrumbs" style="display:flex;align-items:center;gap:4px;font-size:13px;flex:1">
-          @for (c of crumbs(); track $index; let last = $last) {
-            <span style="display:flex;align-items:center;gap:4px">
-              @if ($index > 0) { <ax-icon name="chevron-right" [size]="12" color="#A0AFBF" /> }
-              <span [style.color]="last ? '#172B3A' : '#647687'" [style.font-weight]="last ? 500 : 400">{{ c }}</span>
+        <nav class="app-breadcrumbs" aria-label="Você está em" style="display:flex;align-items:center;gap:4px;font-size:13px;flex:1">
+          @if (current() !== 'dashboard' && canOpen('dashboard')) {
+            <a class="crumb crumb-home" href="/dashboard" (click)="crumbGo($event, 'dashboard')" title="Página inicial" aria-label="Página inicial"><ax-icon name="house" [size]="14" /></a>
+          }
+          @for (c of crumbLinks(); track $index; let last = $last; let i = $index) {
+            <span class="crumb-wrap" [class.crumb-parent]="i === crumbLinks().length - 2" [class.crumb-last]="last">
+              @if (i > 0 || (current() !== 'dashboard' && canOpen('dashboard'))) { <ax-icon class="crumb-sep" name="chevron-right" [size]="12" color="#A0AFBF" /> }
+              @if (!last && c.id) { <a class="crumb crumb-link" [href]="'/' + c.id" (click)="crumbGo($event, c.id)" [title]="'Ir para ' + c.label"><ax-icon class="crumb-back" name="chevron-left" [size]="14" />{{ c.label }}</a> }
+              @else { <span class="crumb" [style.color]="last ? '#172B3A' : '#647687'" [style.font-weight]="last ? 500 : 400" [attr.aria-current]="last ? 'page' : null">{{ c.label }}</span> }
             </span>
           }
           <button class="btn-ghost no-print" style="padding:2px 4px;margin-left:2px" (click)="toggleFav()" [attr.title]="isFav() ? 'Remover dos favoritos' : 'Adicionar aos favoritos'">
             <ax-icon name="star" [size]="13" [color]="isFav() ? '#D99000' : '#A0AFBF'" />
           </button>
-        </div>
+        </nav>
+
+        <button (click)="openSearch()" class="btn-ghost global-search-icon" aria-label="Pesquisar" title="Pesquisar"><ax-icon name="search" [size]="19" /></button>
 
         <button (click)="openSearch()" class="btn-ghost global-search" style="display:flex;align-items:center;gap:8px;background:#F4F7FA;border:1px solid #DCE4EC;border-radius:6px;padding:5px 12px;color:#647687;font-size:13px;width:200px;justify-content:flex-start">
           <ax-icon name="search" [size]="13" /><span>Pesquisa global...</span>
@@ -213,14 +226,23 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
     </div>
   }
   @if (searchOpen()) {
-    <div class="modal-backdrop" (mousedown)="searchOpen.set(false)">
-      <div class="modal fade-in" style="max-width:600px" (mousedown)="$event.stopPropagation()">
-        <div style="padding:12px 14px;border-bottom:1px solid #F0F4F8;display:flex;align-items:center;gap:10px">
+    <div class="modal-backdrop search-backdrop" (mousedown)="searchOpen.set(false)">
+      <div class="modal fade-in search-modal" role="dialog" aria-label="Pesquisa" style="max-width:600px" (mousedown)="$event.stopPropagation()">
+        <div class="search-bar" style="padding:12px 14px;border-bottom:1px solid #F0F4F8;display:flex;align-items:center;gap:10px">
           <ax-icon name="search" [size]="16" color="#647687" />
-          <input id="global-search-input" class="input-field" style="border:none;box-shadow:none;padding:4px;font-size:14px" placeholder="Buscar telas, clientes, produtos ou nº da venda..." [ngModel]="sq()" (ngModelChange)="searchType($event)" (keydown.escape)="searchOpen.set(false)" (keydown.enter)="searchEnter()" />
-          <span class="kbd">ESC</span>
+          <input id="global-search-input" type="search" enterkeyhint="search" autocomplete="off" class="input-field search-input" style="border:none;box-shadow:none;padding:4px;font-size:14px" placeholder="Buscar telas, clientes, produtos ou nº da venda..." [ngModel]="sq()" (ngModelChange)="searchType($event)" (keydown.escape)="searchOpen.set(false)" (keydown.enter)="searchEnter()" />
+          @if (sq()) { <button class="btn-ghost" style="padding:4px" (click)="searchType(''); focusSearch()" aria-label="Limpar"><ax-icon name="x" [size]="15" /></button> }
+          <span class="kbd search-esc">ESC</span>
+          <button class="btn-ghost search-cancel" (click)="searchOpen.set(false)">Cancelar</button>
         </div>
-        <div style="max-height:60vh;overflow-y:auto;padding:6px 0">
+        <div class="search-results" style="max-height:60vh;overflow-y:auto;padding:6px 0">
+          @if (sq().length < 2) {
+            @if (quickLinks().length) {
+              <div style="padding:6px 14px;font-size:10px;font-weight:600;color:#647687;text-transform:uppercase">Acesso rápido</div>
+              @for (s of quickLinks(); track s.id) { <div class="autocomplete-item" (click)="searchOpen.set(false); go(s.id)"><ax-icon [name]="s.icon" [size]="13" [color]="s.fav ? '#D99000' : '#0875D1'" /> &nbsp;{{ s.title }}</div> }
+            }
+            <div style="padding:10px 14px;font-size:12px;color:#8696A7">Digite ao menos 2 letras: telas do sistema, clientes (nome, CPF/CNPJ, telefone), produtos (nome, código, EAN) ou número da venda.</div>
+          }
           @if (screenHits().length) {
             <div style="padding:6px 14px;font-size:10px;font-weight:600;color:#647687;text-transform:uppercase">Telas</div>
             @for (s of screenHits(); track s.id) { <div class="autocomplete-item" (click)="searchOpen.set(false); go(s.id)"><ax-icon [name]="s.icon" [size]="13" color="#0875D1" /> &nbsp;{{ s.title }}</div> }
@@ -273,13 +295,23 @@ export class ShellComponent implements OnInit, OnDestroy {
   readonly sections = computed(() => {
     const me = this.me(); if (!me) return [];
     const mods = new Set(me.company.modules || []);
-    const moduleOf: Record<string, string> = { condicionais: 'condicional', consignacoes: 'consignacao', fidelidade: 'fidelidade', crm: 'crm', rh: 'rh', juridico: 'juridico', contabilidade: 'contabilidade', fiscal: 'fiscal', precificacao: 'precificacao', validade: 'validade', combos: 'combos',
-      agenda: 'agenda', servicos: 'agenda', profissionais: 'agenda', 'planos-tratamento': 'odontograma', 'inteligencia-servicos': 'agenda', oficina: 'oficina', veiculos: 'oficina', 'oficina-painel': 'oficina', recepcao: 'saude', convenios: 'saude', 'saude-painel': 'saude' };
+
     const sa = !!me.user?.is_superadmin, bill = me.billing;
     if (bill?.blocked && !sa) return [{ title: 'ASSINATURA', items: NAV.flatMap((s) => s.items).filter((i) => i.id === 'minha-assinatura') }];
-    return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.sa || this.auth.pcan(i.sa)) && (!i.billing || !!bill) && (!i.perm || this.auth.can(i.perm)) && (!moduleOf[i.id] || mods.has(moduleOf[i.id]))) })).filter((s) => s.items.length);
+    return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.sa || this.auth.pcan(i.sa)) && (!i.billing || !!bill) && (!i.perm || this.auth.can(i.perm)) && (!MODULE_OF[i.id] || mods.has(MODULE_OF[i.id]))) })).filter((s) => s.items.length);
   });
   readonly crumbs = computed(() => TITLES[this.current()] ?? ['AXIONYX']);
+  /** Trilha com links: cada nível leva à tela correspondente (só se o usuário puder abri-la). */
+  readonly crumbLinks = computed(() => {
+    const t = this.crumbs(); this.me();
+    return t.map((label, i) => ({ label, id: i < t.length - 1 ? this.crumbTarget(t.slice(0, i + 1)) : null }));
+  });
+  /** Favoritos e recentes quando a pesquisa ainda está vazia. */
+  readonly quickLinks = computed(() => {
+    const fav = this.favorites().filter((id) => this.canOpen(id)).map((id) => ({ id, fav: true }));
+    const rec = this.recent().filter((id) => id !== this.current() && !this.favorites().includes(id) && this.canOpen(id)).map((id) => ({ id, fav: false }));
+    return [...fav, ...rec].slice(0, 8).map((x) => ({ ...x, title: (TITLES[x.id] ?? [x.id]).join(' › '), icon: x.fav ? 'star' : ICON_OF[x.id] || 'clock' }));
+  });
   readonly userInitials = computed(() => initials(this.me()?.user?.name || ''));
   readonly isFav = computed(() => this.favorites().includes(this.current()));
   readonly screenHits = computed(() => {
@@ -317,6 +349,31 @@ export class ShellComponent implements OnInit, OnDestroy {
     };
     return c === i.id || !!groups[i.id]?.includes(c);
   }
+  /** Tela de destino de um nível da trilha: a tela com exatamente esse título ou a primeira tela daquela seção que o usuário pode abrir. */
+  private crumbTarget(prefix: string[]): string | null {
+    const key = prefix.join('|'), n = prefix.length;
+    const cands = [...(CRUMB_OVERRIDES[key] ?? []), ...Object.keys(TITLES).filter((id) => TITLES[id].join('|') === key),
+      ...Object.keys(TITLES).filter((id) => !id.endsWith('-detail') && TITLES[id].length === n + 1 && TITLES[id].slice(0, n).join('|') === key)];
+    return cands.find((id) => id !== this.current() && this.canOpen(id)) ?? null;
+  }
+  /** O usuário pode abrir a tela? (mesmas regras do menu e das rotas: permissão, permissão de plataforma e módulo ativo) */
+  canOpen(id: string): boolean {
+    const me = this.me(); if (!me) return false;
+    if (me.billing?.blocked && !me.user?.is_superadmin) return id === 'minha-assinatura';
+    const mod = MODULE_OF[id]; if (mod && !(me.company.modules || []).includes(mod)) return false;
+    const shell = this.router.config.find((r) => r.component === ShellComponent);
+    const route = shell?.children?.find((r) => r.path === id);
+    if (!route) return false;
+    const d: any = route.data ?? {};
+    if (d.platform && !this.auth.pcan(d.platform)) return false;
+    if (d.perm && !this.auth.can(d.perm)) return false;
+    return true;
+  }
+  crumbGo(ev: MouseEvent, id: string) {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return; // nova aba
+    ev.preventDefault(); this.go(id);
+  }
+  focusSearch() { setTimeout(() => document.getElementById('global-search-input')?.focus(), 10); }
   titleOf(id: string) { return (TITLES[id] ?? [id]).slice(-1)[0]; }
   go(id: string, query?: any) { this.router.navigate(['/' + id], { queryParams: query }); this.mobileNavOpen.set(false); }
   openRoute(url: string) { this.searchOpen.set(false); this.router.navigateByUrl(url); }
