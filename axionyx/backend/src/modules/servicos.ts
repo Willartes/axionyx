@@ -8,6 +8,7 @@ import { anamneseTemplates, ANAMNESE } from '../services/segments'
 import { checkSlot, resolveServices, completeAppointment, normalizeWorkHours, companyTz, refreshPlanStatus, LOCAL_DT, ACTIVE_STATUSES } from '../services/agenda'
 import { systemCategory } from '../services/finance'
 import { queueMessage } from './integracoes'
+import { sha256 } from '../core/crypto'
 
 // =====================================================================
 // Prestadores de serviço (odontologia, estética, salão): serviços, pacotes, profissionais, agenda,
@@ -144,7 +145,14 @@ const profSchema = {
   slot_min: v.int({ min: 5, max: 240 }).optional(),
   active: v.boolean().optional(),
   services: v.array(v.object({ product_id: v.uuid(), commission_pct: v.number({ min: 0, max: 100 }).nullable().optional(), duration_min: v.int({ min: 5, max: 720 }).nullable().optional() }), { max: 300 }).optional(),
+  council: v.string({ max: 12 }).nullable().optional(),
+  council_number: v.string({ max: 20 }).nullable().optional(),
+  council_uf: v.string({ max: 2 }).nullable().optional(),
+  rqe: v.string({ max: 20 }).nullable().optional(),
+  restrict_records: v.boolean().optional(),
 }
+/** Monta o texto do registro (ex.: CRM-SP 123456) a partir dos campos estruturados. */
+function councilText(b: any) { return b.council && b.council_number ? `${String(b.council)}${b.council_uf ? '-' + String(b.council_uf).toUpperCase() : ''} ${b.council_number}` : undefined }
 async function saveProfessionalServices(c: Q, companyId: string, profId: string, list?: any[]) {
   if (!list) return
   await c.query(`DELETE FROM professional_services WHERE professional_id = $1`, [profId])
@@ -176,8 +184,11 @@ router.post('/api/professionals', { perm: 'profissionais.editar' }, async (ctx) 
       [ctx.user.companyId, b.branch_id ?? null, b.user_id ?? null, b.name, b.specialty ?? null, b.council_id ?? null, b.phone ?? null, b.email ?? null, b.color ?? null,
         b.commission_services_pct ?? null, b.commission_products_pct ?? null, JSON.stringify(hours), b.slot_min ?? null, b.active ?? null])
     await saveProfessionalServices(c, ctx.user.companyId, r.id, b.services)
+    if (b.council || b.council_number || b.rqe || b.restrict_records !== undefined)
+      await c.query(`UPDATE professionals SET council = $2, council_number = $3, council_uf = $4, rqe = $5, restrict_records = COALESCE($6, false), council_id = COALESCE($7, council_id) WHERE id = $1`,
+        [r.id, b.council ?? null, b.council_number ?? null, b.council_uf ? String(b.council_uf).toUpperCase() : null, b.rqe ?? null, b.restrict_records ?? null, councilText(b) ?? null])
     await audit(c, ctx, 'profissional.criado', 'professional', r.id, { name: b.name, user: b.user_id ?? null })
-    return r
+    return c.one(`SELECT * FROM professionals WHERE id = $1`, [r.id])
   })
 })
 
@@ -190,6 +201,9 @@ router.put('/api/professionals/:id', { perm: 'profissionais.editar' }, async (ct
     if (!cur) throw notFound('Profissional')
     await checkProfRefs(c, ctx.user.companyId, { ...cur, ...b }, cur.id)
     if ('work_hours' in ctx.body) b.work_hours = JSON.stringify(normalizeWorkHours(b.work_hours))
+    if (b.council_uf) b.council_uf = String(b.council_uf).toUpperCase()
+    const ct = councilText({ ...cur, ...b })
+    if (ct && ('council' in ctx.body || 'council_number' in ctx.body || 'council_uf' in ctx.body) && !('council_id' in ctx.body)) { b.council_id = ct; ctx.body.council_id = ct }
     const keys = Object.keys(profSchema).filter((k) => k in ctx.body && k !== 'services')
     if (keys.length) await c.query(`UPDATE professionals SET ${keys.map((k, i) => `${k} = $${i + 3}`).join(', ')}, updated_at = now() WHERE id = $1 AND company_id = $2`,
       [cur.id, ctx.user.companyId, ...keys.map((k) => b[k] ?? (k === 'name' ? cur.name : null))])
@@ -220,10 +234,12 @@ const APPT_SELECT = (tz: string) => `
          to_char(a.start_at AT TIME ZONE '${tz}', 'YYYY-MM-DD"T"HH24:MI') AS start_local, to_char(a.end_at AT TIME ZONE '${tz}', 'YYYY-MM-DD"T"HH24:MI') AS end_local,
          (extract(epoch FROM a.end_at - a.start_at) / 60)::int AS duration_min, a.status, a.source, a.room, a.notes, a.sale_id, a.treatment_plan_id, pr.name AS professional, pr.color,
          COALESCE((SELECT json_agg(json_build_object('id', s.id, 'product_id', s.product_id, 'variant_id', s.variant_id, 'name', p.name, 'price', s.price, 'duration_min', s.duration_min,
-                     'professional_id', s.professional_id, 'professional', sp.name, 'customer_package_id', s.customer_package_id, 'plan_item_id', s.plan_item_id, 'status', s.status, 'billed', s.sale_item_id IS NOT NULL) ORDER BY s.sort)
+                     'professional_id', s.professional_id, 'professional', sp.name, 'customer_package_id', s.customer_package_id, 'plan_item_id', s.plan_item_id, 'status', s.status, 'billed', s.sale_item_id IS NOT NULL, 'claim', s.claim_id IS NOT NULL) ORDER BY s.sort)
                      FROM appointment_services s JOIN products p ON p.id = s.product_id JOIN professionals sp ON sp.id = s.professional_id WHERE s.appointment_id = a.id), '[]') AS services,
          (SELECT COALESCE(sum(s.price),0) FROM appointment_services s WHERE s.appointment_id = a.id) AS total,
-         (SELECT number FROM sales WHERE id = a.sale_id) AS sale_number
+         (SELECT number FROM sales WHERE id = a.sale_id) AS sale_number,
+         a.payer, a.insurer_id, (SELECT name FROM insurers WHERE id = a.insurer_id) AS insurer_name, a.insurance_card, a.guide_number, a.authorization_code, a.visit_type, a.telehealth_url,
+         a.arrived_at, a.called_at, a.completed_at
     FROM appointments a JOIN professionals pr ON pr.id = a.professional_id LEFT JOIN customers cu ON cu.id = a.customer_id`
 
 router.get('/api/agenda', { perm: 'agenda.ver' }, async (ctx) => {
@@ -294,6 +310,36 @@ const apptSchema = {
   notes: v.string({ max: 1000 }).nullable().optional(),
   source: v.enum(['balcao', 'telefone', 'whatsapp', 'online', 'retorno', 'plano'] as const).optional(),
   ignoreHours: v.boolean().optional(),
+  // saúde: quem paga, convênio, tipo de atendimento e teleconsulta
+  payer: v.enum(['particular', 'convenio', 'cortesia'] as const).optional(),
+  insurerId: v.uuid().nullable().optional(),
+  insuranceCard: v.string({ max: 40 }).nullable().optional(),
+  guideNumber: v.string({ max: 40 }).nullable().optional(),
+  authorizationCode: v.string({ max: 40 }).nullable().optional(),
+  visitType: v.enum(['primeira', 'retorno', 'sessao', 'procedimento', 'exame', 'teleconsulta'] as const).nullable().optional(),
+  telehealthUrl: v.string({ max: 300, pattern: /^https:\/\/\S+$/, patternMsg: 'Link da teleconsulta deve começar com https://' }).nullable().optional(),
+}
+const HEALTH_KEYS = ['payer', 'insurerId', 'insuranceCard', 'guideNumber', 'authorizationCode', 'visitType', 'telehealthUrl']
+/** Grava pagador/convênio/tipo de atendimento. Convênio exige paciente cadastrado e convênio ativo; a carteirinha vem do perfil se não informada. */
+async function saveHealthFields(c: Q, ctx: Ctx, appointmentId: string, b: any, customerId: string | null) {
+  if (!HEALTH_KEYS.some((k) => k in ctx.body)) return
+  const cur = await c.one(`SELECT payer, insurer_id, insurance_card, guide_number, authorization_code, visit_type, telehealth_url FROM appointments WHERE id = $1`, [appointmentId])
+  const payer = b.payer ?? cur.payer
+  let insurerId = 'insurerId' in ctx.body ? b.insurerId ?? null : cur.insurer_id
+  let card = 'insuranceCard' in ctx.body ? b.insuranceCard ?? null : cur.insurance_card
+  if (payer === 'convenio') {
+    if (!customerId) throw unprocessable('Atendimento por convênio exige paciente cadastrado.')
+    const prof = await c.one(`SELECT insurer_id, insurance_card FROM patient_profiles WHERE customer_id = $1`, [customerId])
+    insurerId = insurerId ?? prof?.insurer_id ?? null
+    if (!insurerId) throw unprocessable('Selecione o convênio.')
+    const ins = await c.one(`SELECT id, active FROM insurers WHERE id = $1 AND company_id = $2`, [insurerId, ctx.user.companyId])
+    if (!ins || !ins.active) throw unprocessable('Convênio inválido ou inativo.')
+    if (!card && prof?.insurer_id === insurerId) card = prof.insurance_card
+  } else { insurerId = null; card = null }
+  await c.query(`UPDATE appointments SET payer = $2, insurer_id = $3, insurance_card = $4, guide_number = $5, authorization_code = $6, visit_type = $7, telehealth_url = $8 WHERE id = $1`,
+    [appointmentId, payer, insurerId, card, payer === 'convenio' ? ('guideNumber' in ctx.body ? b.guideNumber ?? null : cur.guide_number) : null,
+      payer === 'convenio' ? ('authorizationCode' in ctx.body ? b.authorizationCode ?? null : cur.authorization_code) : null,
+      'visitType' in ctx.body ? b.visitType ?? null : cur.visit_type, 'telehealthUrl' in ctx.body ? b.telehealthUrl ?? null : cur.telehealth_url])
 }
 async function allowOutside(c: Q, ctx: Ctx, requested?: boolean) {
   const s = await getSettings(c, ctx.user.companyId)
@@ -327,6 +373,7 @@ router.post('/api/appointments', { perm: 'agenda.editar', idempotent: true }, as
       [ctx.user.companyId, ctx.user.branchId, number, b.professionalId, b.customerId ?? null, b.customerId ? null : b.guestName, b.customerId ? null : (b.guestPhone ?? null),
         slot.startAt, slot.endAt, b.room ?? null, b.notes ?? null, b.source ?? (planId ? 'plano' : 'balcao'), planId, ctx.user.id])
     await saveServices(c, ctx.user.companyId, a.id, services)
+    await saveHealthFields(c, ctx, a.id, b, b.customerId ?? null)
     await audit(c, ctx, 'agenda.agendado', 'appointment', a.id, { number, professional: slot.professional.name, start: b.start, services: services.map((s) => s.name) })
     return (await c.one(`${APPT_SELECT(slot.tz)} WHERE a.id = $1`, [a.id]))
   })
@@ -368,6 +415,7 @@ router.put('/api/appointments/:id', { perm: 'agenda.editar' }, async (ctx) => {
       [cur.id, profId, customerId, slot.startAt, slot.endAt, 'room' in ctx.body ? b.room ?? null : cur.room, 'notes' in ctx.body ? b.notes ?? null : cur.notes,
         customerId ? null : (b.guestName ?? cur.guest_name), customerId ? null : (b.guestPhone ?? cur.guest_phone)])
     await saveServices(c, ctx.user.companyId, cur.id, services)
+    await saveHealthFields(c, ctx, cur.id, b, customerId)
     await audit(c, ctx, 'agenda.remarcado', 'appointment', cur.id, { number: cur.number, start, professional: slot.professional.name })
     return c.one(`${APPT_SELECT(tz)} WHERE a.id = $1`, [cur.id])
   })
@@ -388,7 +436,8 @@ router.post('/api/appointments/:id/status', { perm: 'agenda.editar' }, async (ct
     if (b.status === 'faltou' && new Date(cur.start_at).getTime() > Date.now()) throw unprocessable('Falta só pode ser registrada depois do horário marcado.')
     const r = await c.one(`UPDATE appointments SET status = $2, updated_at = now(),
                              confirmed_at = CASE WHEN $2 = 'confirmado' THEN now() ELSE confirmed_at END,
-                             arrived_at = CASE WHEN $2 = 'em_atendimento' THEN now() ELSE arrived_at END,
+                             arrived_at = CASE WHEN $2 = 'em_atendimento' THEN COALESCE(arrived_at, now()) ELSE arrived_at END,
+                             called_at = CASE WHEN $2 = 'em_atendimento' THEN now() ELSE called_at END,
                              cancelled_at = CASE WHEN $2 = 'cancelado' THEN now() ELSE cancelled_at END,
                              cancel_reason = CASE WHEN $2 IN ('cancelado','faltou') THEN $3 ELSE cancel_reason END
                            WHERE id = $1 RETURNING id, status`, [cur.id, b.status, b.reason ?? null])
@@ -418,9 +467,10 @@ router.get('/api/appointments/:id/checkout', { perm: ['agenda.ver', 'vendas.cria
                                 WHERE s.appointment_id = $1 AND s.status <> 'cancelado' ORDER BY s.sort`, [a.id])
   const customer = a.customer_id ? await db.one(`SELECT c.*, (SELECT COALESCE(sum(amount + interest + fine - discount - paid_amount),0) FROM receivables r WHERE r.customer_id = c.id AND r.method_kind = 'crediario' AND r.status IN ('aberto','parcial')) AS open_balance
                                                    FROM customers c WHERE c.id = $1`, [a.customer_id]) : null
-  return { appointment: { id: a.id, number: a.number, status: a.status, guest_name: a.guest_name, sale_id: a.sale_id }, customer,
-    items: items.filter((i) => !i.customer_package_id && !i.plan_item_id && !i.sale_item_id && Number(i.price) > 0),
-    covered: items.filter((i) => i.customer_package_id || i.plan_item_id), billed: items.filter((i) => i.sale_item_id) }
+  const byInsurer = a.payer !== 'particular'
+  return { appointment: { id: a.id, number: a.number, status: a.status, guest_name: a.guest_name, sale_id: a.sale_id, payer: a.payer }, customer,
+    items: byInsurer ? [] : items.filter((i) => !i.customer_package_id && !i.plan_item_id && !i.sale_item_id && Number(i.price) > 0),
+    covered: items.filter((i) => i.customer_package_id || i.plan_item_id || (byInsurer && !i.sale_item_id)), billed: items.filter((i) => i.sale_item_id) }
 })
 
 router.post('/api/schedule-blocks', { perm: 'agenda.editar' }, async (ctx) => {
@@ -553,26 +603,40 @@ function anamneseAlerts(rec: any) {
 }
 
 router.get('/api/customers/:id/clinical', { perm: 'prontuario.ver' }, async (ctx) => {
-  const cu = await db.one(`SELECT id, name, birth_date, phone, whatsapp, email, cpf_cnpj, anonymized_at FROM customers WHERE id = $1 AND company_id = $2`, [ctx.params.id, ctx.user.companyId])
+  const cu = await db.one(`SELECT id, name, birth_date, phone, whatsapp, email, cpf_cnpj, social_name, cns, anonymized_at FROM customers WHERE id = $1 AND company_id = $2`, [ctx.params.id, ctx.user.companyId])
   if (!cu || cu.anonymized_at) throw notFound('Cliente')
   const tz = await companyTz(db, ctx.user.companyId)
+  // sigilo: registro "restrito" só aparece para quem o escreveu (ou para o profissional dono do registro)
+  const VIS = `(r.visibility = 'equipe' OR r.created_by = $3 OR pr.user_id = $3)`
   const [records, appointments, packages, plans] = await Promise.all([
-    db.many(`SELECT r.*, pr.name AS professional, u.name AS author FROM clinical_records r LEFT JOIN professionals pr ON pr.id = r.professional_id LEFT JOIN users u ON u.id = r.created_by
-              WHERE r.customer_id = $1 AND r.company_id = $2 ORDER BY r.created_at DESC LIMIT 200`, [cu.id, ctx.user.companyId]),
+    db.many(`SELECT r.*, pr.name AS professional, pr.specialty AS professional_specialty, pr.council_id AS professional_council, u.name AS author FROM clinical_records r LEFT JOIN professionals pr ON pr.id = r.professional_id LEFT JOIN users u ON u.id = r.created_by
+              WHERE r.customer_id = $1 AND r.company_id = $2 AND ${VIS} ORDER BY r.created_at DESC LIMIT 300`, [cu.id, ctx.user.companyId, ctx.user.id]),
     db.many(`${APPT_SELECT(tz)} WHERE a.customer_id = $1 AND a.company_id = $2 ORDER BY a.start_at DESC LIMIT 60`, [cu.id, ctx.user.companyId]),
     db.many(`SELECT cp.id, cp.sessions_total, cp.sessions_used, cp.status, cp.expires_at, sv.name AS service_name, pk.name AS package_name FROM customer_packages cp
               JOIN products sv ON sv.id = cp.service_product_id JOIN products pk ON pk.id = cp.package_product_id WHERE cp.customer_id = $1 AND cp.company_id = $2 ORDER BY cp.created_at DESC`, [cu.id, ctx.user.companyId]),
     db.many(`SELECT id, number, title, status, total, created_at FROM treatment_plans WHERE customer_id = $1 AND company_id = $2 ORDER BY created_at DESC`, [cu.id, ctx.user.companyId]),
   ])
   const anamnese = records.find((r) => r.kind === 'anamnese') ?? null
-  await audit(null, ctx, 'prontuario.acesso', 'customer', cu.id, { registros: records.length })
-  return { customer: cu, records, anamnese, alerts: anamneseAlerts(anamnese), appointments, packages, plans }
+  const hidden = (await db.one(`SELECT count(*)::int AS n FROM clinical_records r LEFT JOIN professionals pr ON pr.id = r.professional_id WHERE r.customer_id = $1 AND r.company_id = $2 AND NOT ${VIS}`, [cu.id, ctx.user.companyId, ctx.user.id])).n
+  const profile = await db.one(`SELECT pp.*, i.name AS insurer_name FROM patient_profiles pp LEFT JOIN insurers i ON i.id = pp.insurer_id WHERE pp.customer_id = $1`, [cu.id])
+  const alerts = anamneseAlerts(anamnese)
+  if (profile?.allergies) alerts.unshift(`Alergias: ${profile.allergies}`)
+  if (profile?.chronic_conditions) alerts.push(`Condições: ${profile.chronic_conditions}`)
+  const documents = await db.many(`SELECT d.id, d.number, d.kind, d.issued_at, d.cancelled_at, d.visibility, pr.name AS professional FROM clinical_documents d JOIN professionals pr ON pr.id = d.professional_id
+                                    WHERE d.customer_id = $1 AND d.company_id = $2 AND (d.visibility = 'equipe' OR d.created_by = $3 OR pr.user_id = $3) ORDER BY d.issued_at DESC LIMIT 100`, [cu.id, ctx.user.companyId, ctx.user.id])
+  await audit(null, ctx, 'prontuario.acesso', 'customer', cu.id, { registros: records.length, restritos_ocultos: hidden })
+  return { customer: cu, records, anamnese, alerts, appointments, packages, plans, hiddenRecords: hidden, profile, documents }
 })
 
 router.post('/api/customers/:id/clinical-records', { perm: 'prontuario.editar' }, async (ctx) => {
-  const b: any = parse(v.object({ kind: v.enum(['anamnese', 'evolucao', 'ficha_tecnica', 'avaliacao', 'observacao'] as const), title: v.string({ max: 150 }).optional(), content: v.string({ max: 20000 }).optional(),
-    data: v.json().optional(), appointmentId: v.uuid().optional(), professionalId: v.uuid().optional(), amendsId: v.uuid().optional() }), ctx.body)
-  if (!b.content?.trim() && !b.data) throw unprocessable('Registro vazio.')
+  const b: any = parse(v.object({ kind: v.enum(['anamnese', 'evolucao', 'ficha_tecnica', 'avaliacao', 'observacao', 'consulta', 'sessao', 'resultado_exame'] as const), title: v.string({ max: 150 }).optional(), content: v.string({ max: 20000 }).optional(),
+    data: v.json().optional(), appointmentId: v.uuid().optional(), professionalId: v.uuid().optional(), amendsId: v.uuid().optional(),
+    visibility: v.enum(['equipe', 'restrito'] as const).optional(), specialty: v.string({ max: 60 }).optional(),
+    cidCodes: v.array(v.string({ max: 8, pattern: /^[A-Za-z][0-9]{2}(\.?[0-9A-Za-z]{1,2})?$/, patternMsg: 'CID-10 inválido (ex.: J06.9).' }), { max: 6 }).optional(),
+    vitals: v.object({ pas: v.number({ min: 40, max: 300 }).optional(), pad: v.number({ min: 20, max: 200 }).optional(), fc: v.number({ min: 20, max: 250 }).optional(), fr: v.number({ min: 4, max: 80 }).optional(),
+      temp: v.number({ min: 30, max: 45 }).optional(), spo2: v.number({ min: 50, max: 100 }).optional(), peso: v.number({ min: 0.3, max: 400 }).optional(), altura: v.number({ min: 30, max: 250 }).optional(),
+      glicemia: v.number({ min: 10, max: 1000 }).optional(), dor: v.int({ min: 0, max: 10 }).optional(), cintura: v.number({ min: 20, max: 250 }).optional() }).optional() }), ctx.body)
+  if (!b.content?.trim() && !b.data && !b.vitals) throw unprocessable('Registro vazio.')
   return tx(async (c) => {
     const cu = await c.one(`SELECT id, anonymized_at FROM customers WHERE id = $1 AND company_id = $2`, [ctx.params.id, ctx.user.companyId])
     if (!cu || cu.anonymized_at) throw notFound('Cliente')
@@ -582,12 +646,27 @@ router.post('/api/customers/:id/clinical-records', { perm: 'prontuario.editar' }
       if (JSON.stringify(b.data).length > 20000) throw unprocessable('Ficha muito grande.')
     }
     if (b.appointmentId && !(await c.one(`SELECT 1 FROM appointments WHERE id = $1 AND company_id = $2 AND customer_id = $3`, [b.appointmentId, ctx.user.companyId, cu.id]))) throw unprocessable('Atendimento não pertence a este cliente.')
-    if (b.amendsId && !(await c.one(`SELECT 1 FROM clinical_records WHERE id = $1 AND customer_id = $2`, [b.amendsId, cu.id]))) throw unprocessable('Registro a corrigir não encontrado.')
-    let profId = b.professionalId ?? (await myProfessional(c, ctx))?.id ?? null
-    if (profId && !(await c.one(`SELECT 1 FROM professionals WHERE id = $1 AND company_id = $2`, [profId, ctx.user.companyId]))) profId = null
-    const r = await c.one(`INSERT INTO clinical_records(company_id, customer_id, professional_id, appointment_id, kind, title, content, data, amends_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [ctx.user.companyId, cu.id, profId, b.appointmentId ?? null, b.kind, b.title ?? null, b.content ?? null, JSON.stringify(b.data ?? {}), b.amendsId ?? null, ctx.user.id])
-    await audit(c, ctx, 'prontuario.registro', 'customer', cu.id, { kind: b.kind, record: r.id, adendo: !!b.amendsId })
+    let original: any = null
+    if (b.amendsId) {
+      original = await c.one(`SELECT r.*, pr.user_id AS prof_user FROM clinical_records r LEFT JOIN professionals pr ON pr.id = r.professional_id WHERE r.id = $1 AND r.customer_id = $2`, [b.amendsId, cu.id])
+      if (!original) throw unprocessable('Registro a corrigir não encontrado.')
+      if (original.visibility === 'restrito' && original.created_by !== ctx.user.id && original.prof_user !== ctx.user.id) throw forbidden('Registro sigiloso: só o autor pode acrescentar adendo.')
+    }
+    const mine = await myProfessional(c, ctx)
+    let profId = b.professionalId ?? mine?.id ?? null
+    const prof = profId ? await c.one(`SELECT id, specialty, restrict_records FROM professionals WHERE id = $1 AND company_id = $2`, [profId, ctx.user.companyId]) : null
+    if (!prof) profId = null
+    // sigilo: padrão do profissional (ex.: psicologia); adendo nunca reduz o sigilo do registro original
+    const visibility = original?.visibility === 'restrito' ? 'restrito' : b.visibility ?? (prof?.restrict_records ? 'restrito' : 'equipe')
+    const vitals = b.vitals && Object.keys(b.vitals).length ? { ...b.vitals, ...(b.vitals.peso && b.vitals.altura ? { imc: Math.round((b.vitals.peso / (b.vitals.altura / 100) ** 2) * 10) / 10 } : {}) } : null
+    const cids = (b.cidCodes ?? []).map((x: string) => x.toUpperCase())
+    const createdAt = new Date().toISOString()
+    const hash = sha256(JSON.stringify({ customer: cu.id, kind: b.kind, title: b.title ?? null, content: b.content ?? null, data: b.data ?? {}, vitals, cids, by: ctx.user.id, at: createdAt }))
+    const r = await c.one(`INSERT INTO clinical_records(company_id, customer_id, professional_id, appointment_id, kind, title, content, data, amends_id, created_by, visibility, specialty, cid_codes, vitals, content_hash, created_at)
+                           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [ctx.user.companyId, cu.id, profId, b.appointmentId ?? null, b.kind, b.title ?? null, b.content ?? null, JSON.stringify(b.data ?? {}), b.amendsId ?? null, ctx.user.id,
+        visibility, b.specialty ?? prof?.specialty ?? null, cids, vitals ? JSON.stringify(vitals) : null, hash, createdAt])
+    await audit(c, ctx, 'prontuario.registro', 'customer', cu.id, { kind: b.kind, record: r.id, adendo: !!b.amendsId, sigilo: visibility === 'restrito' })
     return r
   })
 })

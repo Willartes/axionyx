@@ -24,7 +24,7 @@ router.post('/api/admin/companies', { perm: 'admin.empresas' }, async (ctx) => {
   requirePlatform(ctx, 'empresas.criar')
   const b = parse(v.object({ name: v.string({ min: 2, max: 150 }), tradeName: v.string({ max: 100 }).optional(), cnpj: v.string().optional(), ie: v.string().optional(),
     taxRegime: v.enum(['simples', 'presumido', 'real', 'mei'] as const).default('simples'), address, branchName: v.string({ min: 2 }).default('Matriz'),
-    segment: v.enum(['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'oficina', 'geral'] as const).default('moda') }), ctx.body)
+    segment: v.enum(['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'oficina', 'saude', 'geral'] as const).default('moda') }), ctx.body)
   if (b.cnpj && !isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.')
   return tx(async (c) => {
     const r = await bootstrapCompany(c, { name: b.name, tradeName: b.tradeName, cnpj: b.cnpj ? onlyDigits(b.cnpj) : null, ie: b.ie, taxRegime: b.taxRegime, crt: b.taxRegime === 'simples' || b.taxRegime === 'mei' ? 1 : 3,

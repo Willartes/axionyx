@@ -1,12 +1,12 @@
 import { Q } from '../core/db'
-import { DEFAULT_ROLES } from '../core/permissions'
+import { DEFAULT_ROLES, HEALTH_ROLES } from '../core/permissions'
 
 /**
  * Segmentos de negócio. Cada segmento é um "pacote": módulos ativos (menu e telas), vocabulário,
  * categorias e unidades iniciais e parâmetros padrão. O núcleo (vendas, estoque, financeiro, fiscal...)
  * é o mesmo para todos; aplicar um pacote só ADICIONA módulos, categorias e parâmetros — nunca apaga dados.
  */
-export type SegmentId = 'moda' | 'hortifruti' | 'adega' | 'mercado' | 'cosmeticos' | 'odontologia' | 'estetica' | 'salao' | 'oficina' | 'geral'
+export type SegmentId = 'moda' | 'hortifruti' | 'adega' | 'mercado' | 'cosmeticos' | 'odontologia' | 'estetica' | 'salao' | 'oficina' | 'saude' | 'geral'
 
 /** Módulos que dependem do ramo (além dos módulos gerais do sistema). */
 export const FEATURE_MODULES: Record<string, { name: string; desc: string; icon: string }> = {
@@ -21,6 +21,7 @@ export const FEATURE_MODULES: Record<string, { name: string; desc: string; icon:
   agenda: { name: 'Agenda, serviços e profissionais', desc: 'Agenda por profissional, serviços com duração, bloqueios, comissão por profissional e cobrança do atendimento no PDV', icon: 'calendar-days' },
   pacotes: { name: 'Pacotes de sessões', desc: 'Venda de pacotes (ex.: 10 sessões) com controle de saldo, validade e baixa a cada atendimento', icon: 'ticket' },
   prontuario: { name: 'Prontuário e fichas', desc: 'Anamnese com consentimento, evolução, ficha técnica e histórico de atendimentos (dados de saúde com acesso auditado)', icon: 'clipboard-list' },
+  saude: { name: 'Clínica: recepção, convênios e documentos clínicos', desc: 'Sala de espera, convênios com tabela de preços e faturamento de guias, receitas, atestados, pedidos de exame e encaminhamentos, prontuário por especialidade com sigilo, sinais vitais e CID', icon: 'stethoscope' },
   oficina: { name: 'Oficina: ordens de serviço e veículos', desc: 'Ordem de serviço com checklist de entrada, orçamento com aprovação, mão de obra por serviço ou por hora, peças do estoque, garantia, histórico por placa e lembrete de revisão', icon: 'wrench' },
   odontograma: { name: 'Odontograma e planos de tratamento', desc: 'Odontograma por dente e face, plano de tratamento com aprovação e cobrança parcelada', icon: 'smile' },
 }
@@ -111,6 +112,15 @@ export const SEGMENTS: Record<SegmentId, SegmentDef> = {
       'Estética facial', 'Estética corporal', 'Pacotes', 'Produtos para cabelo', 'Produtos para unhas', 'Cosméticos'],
     settings: { agenda: { intervaloMin: 15, antecedenciaLembreteHoras: 24 }, validade: { alertaDias: 60 } },
   },
+  saude: {
+    id: 'saude', name: 'Clínica e consultório de saúde', short: 'Saúde', icon: 'stethoscope', status: 'disponivel',
+    description: 'Consultórios e clínicas de todas as especialidades (medicina, psicologia, fisioterapia, nutrição, fonoaudiologia, enfermagem, terapias…), do profissional autônomo à clínica com recepção, gerente e vários profissionais: agenda, sala de espera, prontuário por especialidade com sigilo, documentos clínicos, convênios e particular.',
+    modules: [...CORE, 'agenda', 'prontuario', 'pacotes', 'saude'],
+    terms: { cliente: 'Paciente', clientes: 'Pacientes', atendimento: 'Atendimento', atendimentos: 'Atendimentos', prontuario: 'Prontuário', sala: 'Consultório', servico: 'Procedimento', servicos: 'Procedimentos' },
+    defaultUnit: 'UN', units: ['UN', 'SESSAO', 'CX', 'ML', 'KIT'],
+    categories: ['Consultas', 'Retornos', 'Teleconsultas', 'Avaliações', 'Sessões', 'Procedimentos', 'Exames', 'Aplicações e vacinas', 'Pacotes de sessões', 'Produtos e materiais'],
+    settings: { agenda: { intervaloMin: 30, antecedenciaLembreteHoras: 24 } },
+  },
   oficina: {
     id: 'oficina', name: 'Oficina mecânica (carro e moto)', short: 'Oficina', icon: 'wrench', status: 'disponivel',
     description: 'Oficinas mecânicas, centros automotivos e oficinas de moto: ordem de serviço com checklist e aprovação do orçamento, mão de obra por serviço ou por hora, peças e produtos do estoque repassados ao cliente, comissão por mecânico, garantia, histórico por placa e lembrete de revisão.',
@@ -175,8 +185,8 @@ export async function applySegment(c: Q, companyId: string, segmentId: SegmentId
     }
   }
   // ramos de serviço: garante o perfil "Profissional" (empresas antigas foram criadas antes dele existir)
-  if (s.modules.includes('agenda')) {
-    const role = DEFAULT_ROLES.find((r) => r.name === 'Profissional')!
+  const roles = [...(s.modules.includes('agenda') ? [DEFAULT_ROLES.find((r) => r.name === 'Profissional')!] : []), ...(s.modules.includes('saude') ? HEALTH_ROLES : [])]
+  for (const role of roles) {
     await c.query(`INSERT INTO roles(company_id, name, description, permissions, max_discount_pct, is_system) SELECT $1,$2,$3,$4,$5,true
                     WHERE NOT EXISTS (SELECT 1 FROM roles WHERE company_id = $1 AND name = $2)`, [companyId, role.name, role.description, role.permissions, role.maxDiscount])
   }
@@ -214,6 +224,53 @@ export const ANAMNESE: Record<string, AnamneseField[]> = {
     { key: 'procedimentos', label: 'Procedimentos estéticos anteriores (preenchimento, toxina, laser...)', type: 'texto' },
     { key: 'objetivo', label: 'Objetivo / queixa principal', type: 'texto' },
   ],
+  saude_geral: [
+    { key: 'queixa', label: 'Queixa principal e história da doença atual', type: 'texto' },
+    { key: 'alergias', label: 'Alergias (medicamentos, alimentos, látex)? Quais?', type: 'texto', alert: true },
+    { key: 'medicamentos', label: 'Medicamentos em uso', type: 'texto' },
+    { key: 'doencas', label: 'Doenças crônicas (hipertensão, diabetes, cardiopatia, asma…)', type: 'texto', alert: true },
+    { key: 'cirurgias', label: 'Cirurgias e internações anteriores', type: 'texto' },
+    { key: 'familiar', label: 'Histórico familiar relevante', type: 'texto' },
+    { key: 'gestante', label: 'Está gestante ou amamentando?', type: 'sim_nao', alert: true },
+    { key: 'tabagismo', label: 'Tabagismo', type: 'opcoes', options: ['Nunca fumou', 'Ex-fumante', 'Fumante'] },
+    { key: 'alcool', label: 'Consumo de álcool', type: 'opcoes', options: ['Não', 'Social', 'Frequente'] },
+    { key: 'atividade', label: 'Atividade física', type: 'opcoes', options: ['Sedentário', '1–2x por semana', '3x ou mais por semana'] },
+  ],
+  psicologia: [
+    { key: 'demanda', label: 'Demanda / motivo da procura', type: 'texto' },
+    { key: 'historico', label: 'Histórico de acompanhamento psicológico ou psiquiátrico', type: 'texto' },
+    { key: 'medicacao', label: 'Usa medicação psiquiátrica? Qual e quem prescreveu?', type: 'texto', alert: true },
+    { key: 'risco', label: 'Relato atual de ideação suicida ou autolesão?', type: 'sim_nao', alert: true },
+    { key: 'sono', label: 'Sono e alimentação', type: 'texto' },
+    { key: 'rede', label: 'Rede de apoio (família, amigos, trabalho)', type: 'texto' },
+    { key: 'expectativas', label: 'Expectativas com o acompanhamento', type: 'texto' },
+  ],
+  fisioterapia: [
+    { key: 'queixa', label: 'Queixa principal e região acometida', type: 'texto' },
+    { key: 'dor', label: 'Intensidade da dor (EVA 0–10)', type: 'opcoes', options: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'] },
+    { key: 'inicio', label: 'Início e mecanismo da lesão', type: 'texto' },
+    { key: 'exames', label: 'Exames de imagem / laudos trazidos', type: 'texto' },
+    { key: 'cirurgia', label: 'Cirurgia ortopédica prévia ou prótese?', type: 'sim_nao', alert: true },
+    { key: 'contraindicacoes', label: 'Marca-passo, gestação, trombose, neoplasia ou outra contraindicação?', type: 'texto', alert: true },
+    { key: 'objetivo', label: 'Objetivo funcional do paciente', type: 'texto' },
+  ],
+  nutricao: [
+    { key: 'objetivo', label: 'Objetivo (emagrecimento, ganho de massa, saúde, patologia…)', type: 'texto' },
+    { key: 'patologias', label: 'Diabetes, hipertensão, dislipidemia, doença renal ou intestinal?', type: 'texto', alert: true },
+    { key: 'alergias', label: 'Alergias ou intolerâncias alimentares', type: 'texto', alert: true },
+    { key: 'restricoes', label: 'Restrições / preferências (vegetariano, religião…)', type: 'texto' },
+    { key: 'rotina', label: 'Rotina alimentar e horários', type: 'texto' },
+    { key: 'agua', label: 'Ingestão de água por dia', type: 'opcoes', options: ['Menos de 1 L', '1 a 2 L', 'Mais de 2 L'] },
+    { key: 'suplementos', label: 'Usa suplementos? Quais?', type: 'texto' },
+  ],
+  fonoaudiologia: [
+    { key: 'queixa', label: 'Queixa (fala, voz, audição, deglutição, linguagem, motricidade orofacial)', type: 'texto' },
+    { key: 'desenvolvimento', label: 'Desenvolvimento (para crianças: marcos de fala e linguagem)', type: 'texto' },
+    { key: 'audicao', label: 'Já fez avaliação auditiva? Resultado', type: 'texto' },
+    { key: 'disfagia', label: 'Engasgos ou dificuldade para engolir?', type: 'sim_nao', alert: true },
+    { key: 'uso_voz', label: 'Uso profissional da voz?', type: 'sim_nao' },
+    { key: 'escola', label: 'Escola / trabalho e queixas relacionadas', type: 'texto' },
+  ],
   salao: [
     { key: 'alergias', label: 'Alergia a produtos químicos (tintura, amônia, formol, esmaltes)? Quais?', type: 'texto', alert: true },
     { key: 'gestante', label: 'Está gestante ou amamentando?', type: 'sim_nao', alert: true },
@@ -228,7 +285,9 @@ export const ANAMNESE: Record<string, AnamneseField[]> = {
 
 /** Modelos de ficha disponíveis para o ramo (salão com estética usa os dois). */
 export function anamneseTemplates(segment: string | null | undefined) {
-  const ids = segment === 'salao' ? ['salao', 'estetica'] : segment === 'odontologia' ? ['odontologia'] : segment === 'estetica' ? ['estetica'] : ['salao', 'estetica', 'odontologia']
-  const names: Record<string, string> = { odontologia: 'Anamnese odontológica', estetica: 'Ficha de avaliação estética', salao: 'Ficha do salão (cabelo e unhas)' }
+  const ids = segment === 'salao' ? ['salao', 'estetica'] : segment === 'odontologia' ? ['odontologia'] : segment === 'estetica' ? ['estetica']
+    : segment === 'saude' ? ['saude_geral', 'psicologia', 'fisioterapia', 'nutricao', 'fonoaudiologia', 'odontologia', 'estetica'] : ['salao', 'estetica', 'odontologia']
+  const names: Record<string, string> = { odontologia: 'Anamnese odontológica', estetica: 'Ficha de avaliação estética', salao: 'Ficha do salão (cabelo e unhas)',
+    saude_geral: 'Anamnese clínica geral (medicina, enfermagem, terapias)', psicologia: 'Entrevista inicial — psicologia', fisioterapia: 'Avaliação fisioterapêutica', nutricao: 'Anamnese nutricional', fonoaudiologia: 'Anamnese fonoaudiológica' }
   return ids.map((id) => ({ id, name: names[id], fields: ANAMNESE[id] }))
 }

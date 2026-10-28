@@ -29,7 +29,12 @@ router.get('/api/nav/badges', {}, async (ctx) => {
       (SELECT count(*)::int FROM work_orders WHERE company_id = $1 AND status NOT IN ('entregue','cancelada')) AS wo_open,
       (SELECT count(*)::int FROM work_orders WHERE company_id = $1 AND promised_at < now() AND status NOT IN ('pronta','entregue','cancelada')) AS wo_late,
       (SELECT count(*)::int FROM work_orders WHERE company_id = $1 AND status = 'pronta') AS wo_ready,
-      (SELECT count(*)::int FROM vehicle_reminders WHERE company_id = $1 AND status = 'aberto' AND due_date <= current_date + 7) AS vehicle_reminders`, [id, br, can(ctx.user, 'agenda.todas'), ctx.user.id])
+      (SELECT count(*)::int FROM vehicle_reminders WHERE company_id = $1 AND status = 'aberto' AND due_date <= current_date + 7) AS vehicle_reminders,
+      (SELECT count(*)::int FROM insurance_claims WHERE company_id = $1 AND status = 'a_faturar') AS claims_to_bill,
+      (SELECT count(*)::int FROM insurance_batches WHERE company_id = $1 AND status IN ('enviado','pago_parcial') AND expected_at < current_date) AS batches_late,
+      (SELECT count(*)::int FROM appointments a WHERE a.company_id = $1 AND a.branch_id = $2 AND a.arrived_at IS NOT NULL AND a.status IN ('agendado','confirmado')
+          AND a.arrived_at > now() - interval '18 hours'
+          AND ($3::boolean OR a.professional_id IN (SELECT id FROM professionals WHERE company_id = $1 AND user_id = $4))) AS waiting_room`, [id, br, can(ctx.user, 'agenda.todas'), ctx.user.id])
   const notifications: { icon: string; text: string; link: string; tone: string }[] = []
   if (r.low_stock && can(ctx.user, 'estoque.ver')) notifications.push({ icon: 'boxes', text: `${r.low_stock} variação(ões) no estoque mínimo nesta filial`, link: '/estoque-posicao', tone: 'warning' })
   if (r.overdue_receivables && can(ctx.user, 'financeiro.ver')) notifications.push({ icon: 'wallet', text: `${r.overdue_receivables} título(s) a receber vencido(s)`, link: '/contas-receber', tone: 'danger' })
@@ -44,6 +49,9 @@ router.get('/api/nav/badges', {}, async (ctx) => {
   if (r.wo_late && can(ctx.user, 'oficina.ver')) notifications.push({ icon: 'wrench', text: `${r.wo_late} OS com prazo de entrega vencido`, link: '/oficina', tone: 'danger' })
   if (r.wo_ready && can(ctx.user, 'oficina.ver')) notifications.push({ icon: 'car', text: `${r.wo_ready} veículo(s) pronto(s) para entrega`, link: '/oficina', tone: 'info' })
   if (r.vehicle_reminders && can(ctx.user, 'oficina.ver')) notifications.push({ icon: 'calendar-clock', text: `${r.vehicle_reminders} revisão(ões) de clientes vencendo nos próximos 7 dias`, link: '/oficina-painel', tone: 'info' })
+  if (r.waiting_room && can(ctx.user, 'agenda.ver')) notifications.push({ icon: 'armchair', text: `${r.waiting_room} paciente(s) na sala de espera`, link: '/recepcao', tone: 'info' })
+  if (r.claims_to_bill && can(ctx.user, 'convenios.ver')) notifications.push({ icon: 'file-stack', text: `${r.claims_to_bill} guia(s) de convênio a faturar`, link: '/convenios', tone: 'info' })
+  if (r.batches_late && can(ctx.user, 'convenios.ver')) notifications.push({ icon: 'hourglass', text: `${r.batches_late} lote(s) de convênio com pagamento atrasado`, link: '/convenios', tone: 'warning' })
   if (r.integration_errors && can(ctx.user, 'integracoes.ver')) notifications.push({ icon: 'plug', text: `${r.integration_errors} evento(s) de integração com erro`, link: '/integracoes', tone: 'danger' })
   if (platformCan(ctx.user, 'carteira.ver')) {
     const sx = await db.one(`SELECT (SELECT count(*)::int FROM saas_reviews WHERE status = 'aberta') AS saas_reviews,
@@ -74,5 +82,5 @@ router.get('/api/health', { auth: 'none' }, async () => {
   const t0 = Date.now()
   await db.query('SELECT 1')
   const m = await db.one(`SELECT count(*)::int AS n FROM schema_migrations`)
-  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.8.0' }
+  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.9.0' }
 })

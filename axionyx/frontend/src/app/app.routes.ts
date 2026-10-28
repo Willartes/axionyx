@@ -47,6 +47,9 @@ export const routes: Routes = [
       { path: 'oficina', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/oficina.page').then((m) => m.OficinaPage) },
       { path: 'os-detail/:id', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/os-detail.page').then((m) => m.OsDetailPage) },
       { path: 'veiculos', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/veiculos.page').then((m) => m.VeiculosPage) },
+      { path: 'recepcao', ...p('agenda.ver'), loadComponent: () => import('./pages/saude/recepcao.page').then((m) => m.RecepcaoPage) },
+      { path: 'convenios', ...p('convenios.ver'), loadComponent: () => import('./pages/saude/convenios.page').then((m) => m.ConveniosPage) },
+      { path: 'saude-painel', ...p(['dashboard.ver', 'agenda.ver']), loadComponent: () => import('./pages/saude/saude-painel.page').then((m) => m.SaudePainelPage) },
       { path: 'oficina-painel', ...p('oficina.ver'), loadComponent: () => import('./pages/oficina/oficina-painel.page').then((m) => m.OficinaPainelPage) },
       { path: 'inteligencia-servicos', ...p(['dashboard.ver', 'agenda.ver']), loadComponent: () => import('./pages/servicos/inteligencia-servicos.page').then((m) => m.InteligenciaServicosPage) },
       // Condicional / consignação

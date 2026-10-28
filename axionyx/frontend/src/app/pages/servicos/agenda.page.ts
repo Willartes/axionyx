@@ -1,3 +1,4 @@
+import { CLAIM_STATUS, PAYERS, VISIT_TYPES } from '../saude/saude-shared';
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -188,6 +189,21 @@ interface Line { productId: string; professionalId: string; customerPackageId: s
         </div>
       </div>
     </div>
+    @if (health()) {
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px" class="grid-3-resp">
+        <div><label class="field-label">Tipo de atendimento</label><select class="input-field" [(ngModel)]="fVisit"><option value="">—</option>@for (v of visitTypes; track v[0]) { <option [value]="v[0]">{{ v[1] }}</option> }</select></div>
+        <div><label class="field-label">Pagamento</label><select class="input-field" [(ngModel)]="fPayer" (ngModelChange)="onPayer()"><option value="particular">Particular</option><option value="convenio" [disabled]="guest">Convênio</option><option value="cortesia">Cortesia / sem custo</option></select></div>
+        @if (fPayer === 'convenio') { <div><label class="field-label">Convênio</label><select class="input-field" [(ngModel)]="fInsurer"><option value="">Selecione…</option>@for (i of insurers(); track i.id) { <option [value]="i.id">{{ i.name }}</option> }</select></div> }
+      </div>
+      @if (fPayer === 'convenio') {
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px" class="grid-3-resp">
+          <div><label class="field-label">Carteirinha</label><input class="input-field mono" [(ngModel)]="fCard" /></div>
+          <div><label class="field-label">Nº da guia</label><input class="input-field mono" [(ngModel)]="fGuide" /></div>
+          <div><label class="field-label">Senha / autorização{{ insurerNeedsAuth() ? ' *' : '' }}</label><input class="input-field mono" [(ngModel)]="fAuth" /></div>
+        </div>
+      }
+      @if (fVisit === 'teleconsulta') { <label class="field-label" style="margin-top:8px">Link da teleconsulta</label><input class="input-field" [(ngModel)]="fTele" placeholder="https://… (sala da plataforma de vídeo usada pelo profissional)" /> }
+    }
     <label class="field-label" style="margin-top:12px">Observações</label>
     <textarea class="input-field" rows="2" [(ngModel)]="fNotes"></textarea>
     @if (outside()) {
@@ -209,6 +225,13 @@ interface Line { productId: string; professionalId: string; customerPackageId: s
         <div><span class="muted">Quando</span><div style="font-weight:600">{{ a.start_local.slice(0, 10) | dt }} · {{ a.start_local.slice(11) }}–{{ a.end_local.slice(11) }}</div></div>
         <div><span class="muted">{{ term('profissional') }}</span><div style="font-weight:600">{{ a.professional }}</div></div>
         @if (a.room) { <div><span class="muted">{{ term('sala') }}</span><div>{{ a.room }}</div></div> }
+        @if (health()) {
+          <div><span class="muted">Pagamento</span><div>@if (a.payer === 'convenio') { <span class="badge badge-info">{{ a.insurer_name || 'Convênio' }}</span> } @else { {{ payerLabel(a.payer) }} }</div></div>
+          @if (a.visit_type) { <div><span class="muted">Tipo</span><div>{{ visitLabel(a.visit_type) }}</div></div> }
+          @if (a.payer === 'convenio') { <div style="grid-column:1/-1;font-size:12px"><span class="muted">Carteirinha</span> {{ a.insurance_card || '—' }} · <span class="muted">Guia</span> {{ a.guide_number || '—' }} · <span class="muted">Autorização</span> {{ a.authorization_code || '—' }}</div> }
+          @if (a.telehealth_url) { <div style="grid-column:1/-1"><a [href]="a.telehealth_url" target="_blank" rel="noopener" style="color:#0875D1;font-size:12.5px"><ax-icon name="video" [size]="13" /> Abrir sala da teleconsulta</a></div> }
+          @if (a.arrived_at) { <div><span class="muted">Chegada</span><div>{{ a.arrived_at | dtt }}</div></div> }
+        }
         @if (a.sale_number) { <div><span class="muted">Venda</span><div><a style="color:#0875D1;cursor:pointer" (click)="router.navigateByUrl('/pedido-detail/' + a.sale_id)">nº {{ a.sale_number }}</a></div></div> }
       </div>
       <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12.5px">
@@ -217,7 +240,8 @@ interface Line { productId: string; professionalId: string; customerPackageId: s
           <tr><td>{{ s.name }} <span class="muted">({{ s.duration_min }} min)</span>
               @if (s.customer_package_id) { <span class="badge badge-info" style="margin-left:4px">Pacote</span> }
               @if (s.plan_item_id) { <span class="badge badge-info" style="margin-left:4px">Plano de tratamento</span> }
-              @if (s.billed) { <span class="badge badge-success" style="margin-left:4px">Cobrado</span> }</td>
+              @if (s.billed) { <span class="badge badge-success" style="margin-left:4px">Cobrado</span> }
+              @if (s.claim) { <span class="badge badge-info" style="margin-left:4px">Guia {{ claimLabel(s.claim) }}</span> }</td>
             <td>{{ s.professional }}</td><td class="num">{{ s.price | brl }}</td></tr>
         }</tbody>
       </table>
@@ -236,7 +260,7 @@ interface Line { productId: string; professionalId: string; customerPackageId: s
           @if (a.status === 'agendado') { <button class="btn-secondary" style="font-size:12px" (click)="setStatus(a, 'confirmado')"><ax-icon name="check" [size]="13" /> Confirmar</button> }
           @if (a.status === 'agendado' || a.status === 'confirmado') { <button class="btn-secondary" style="font-size:12px" (click)="setStatus(a, 'em_atendimento')"><ax-icon name="play" [size]="13" /> Iniciar</button> }
           @if (a.status === 'faltou') { <button class="btn-ghost" style="font-size:12px" (click)="setStatus(a, 'agendado')">Desfazer falta</button> }
-          @if (a.status !== 'cancelado' && a.status !== 'faltou' && a.status !== 'concluido') { <button class="btn-secondary" style="font-size:12px" (click)="complete(a)"><ax-icon name="check-check" [size]="13" /> Concluir sem cobrar</button> }
+          @if (a.status !== 'cancelado' && a.status !== 'faltou' && a.status !== 'concluido') { <button class="btn-secondary" style="font-size:12px" (click)="complete(a)"><ax-icon name="check-check" [size]="13" /> {{ a.payer === 'convenio' ? 'Concluir (gera guia do convênio)' : a.payer === 'cortesia' ? 'Concluir' : 'Concluir sem cobrar' }}</button> }
         }
         @if (billable(a) && auth.can('vendas.criar') && a.status !== 'cancelado' && a.status !== 'faltou') { <button class="btn-primary" style="font-size:12px" (click)="checkout(a)"><ax-icon name="scan-barcode" [size]="13" /> Cobrar no PDV</button> }
       }
@@ -289,6 +313,7 @@ export class AgendaPage implements OnInit {
     const qd = this.route.snapshot.queryParamMap.get('data'); if (qd && /^\d{4}-\d{2}-\d{2}$/.test(qd)) this.date.set(qd);
     await this.load();
     try { const r = await this.api.get<any>('/services', { size: 500 }); this.services.set(r.items); } catch { /* sem permissão */ }
+    if (this.health()) { try { this.insurers.set(await this.api.get<any[]>('/insurers')); } catch { /* */ } }
     const cid = this.route.snapshot.queryParamMap.get('cliente');
     if (cid && this.auth.can('agenda.editar')) {
       try {
@@ -353,7 +378,7 @@ export class AgendaPage implements OnInit {
   statusLabel(s: string) { return APPT_STATUS[s]?.[0] ?? s; }
   svcNames(a: any) { return (a.services ?? []).map((s: any) => s.name).join(', '); }
   isPast(a: any) { return a.start_local <= `${todayIso()}T${fmtMin(this.nowMin())}`; }
-  billable(a: any) { return (a.services ?? []).some((s: any) => !s.customer_package_id && !s.plan_item_id && !s.billed && Number(s.price) > 0); }
+  billable(a: any) { return (!a.payer || a.payer === 'particular') && (a.services ?? []).some((s: any) => !s.customer_package_id && !s.plan_item_id && !s.billed && Number(s.price) > 0); }
   readonly byDay = computed(() => {
     const groups: { date: string; label: string; items: any[] }[] = [];
     for (const a of this.data()?.appointments ?? []) {
@@ -374,6 +399,14 @@ export class AgendaPage implements OnInit {
   readonly formOpen = signal(false); readonly editing = signal<any>(null); readonly busy = signal(false);
   readonly fCustomer = signal<any>(null); readonly lines = signal<Line[]>([]); readonly packages = signal<any[]>([]); readonly alerts = signal<string[]>([]);
   readonly slots = signal<string[]>([]); readonly slotsLoaded = signal(false); readonly outside = signal('');
+  fPayer = 'particular'; fInsurer = ''; fCard = ''; fGuide = ''; fAuth = ''; fVisit = ''; fTele = '';
+  readonly health = computed(() => this.auth.has('saude')); readonly insurers = signal<any[]>([]);
+  readonly visitTypes = Object.entries(VISIT_TYPES);
+  payerLabel(p: string) { return PAYERS[p] ?? p; } visitLabel(v: string) { return VISIT_TYPES[v] ?? v; }
+  claimLabel(c: any) { return typeof c === 'object' && c ? (CLAIM_STATUS[c.status]?.[0] ?? c.status).toLowerCase() : 'gerada'; }
+  insurerNeedsAuth() { return !!this.insurers().find((i) => i.id === this.fInsurer)?.requires_authorization; }
+  private profileInsurer: any = null;
+  onPayer() { if (this.fPayer === 'convenio' && !this.fInsurer && this.profileInsurer) { this.fInsurer = this.profileInsurer.insurer_id || ''; this.fCard = this.fCard || this.profileInsurer.insurance_card || ''; } }
   guest = false; fGuestName = ''; fGuestPhone = ''; fProf = ''; fRoom = ''; fDate = ''; fTime = ''; fNotes = ''; ignoreHours = false;
   private idem = newIdempotencyKey();
   readonly formProfs = computed(() => this.allProfs().length ? this.allProfs() : (this.data()?.professionals ?? []));
@@ -385,6 +418,7 @@ export class AgendaPage implements OnInit {
     this.editing.set(null); this.guest = false; this.fGuestName = ''; this.fGuestPhone = ''; this.fCustomer.set(null); this.packages.set([]); this.alerts.set([]);
     this.fProf = profId || this.data()?.mine || this.formProfs()[0]?.id || ''; this.fRoom = ''; this.fNotes = ''; this.fDate = this.date(); this.fTime = time || '';
     this.lines.set([{ productId: '', professionalId: this.fProf, customerPackageId: '' }]); this.outside.set(''); this.ignoreHours = false; this.slots.set([]); this.slotsLoaded.set(false);
+    this.fPayer = 'particular'; this.fInsurer = ''; this.fCard = ''; this.fGuide = ''; this.fAuth = ''; this.fVisit = ''; this.fTele = ''; this.profileInsurer = null;
     this.idem = newIdempotencyKey(); this.formOpen.set(true);
   }
   openEdit(a: any) {
@@ -393,6 +427,7 @@ export class AgendaPage implements OnInit {
     this.fCustomer.set(a.customer_id ? { id: a.customer_id, name: a.customer } : null); this.fProf = a.professional_id; this.fRoom = a.room || ''; this.fNotes = a.notes || '';
     this.fDate = a.start_local.slice(0, 10); this.fTime = a.start_local.slice(11);
     this.lines.set(a.services.map((s: any) => ({ productId: s.product_id, professionalId: s.professional_id, customerPackageId: s.customer_package_id || '', planItemId: s.plan_item_id || undefined })));
+    this.fPayer = a.payer || 'particular'; this.fInsurer = a.insurer_id || ''; this.fCard = a.insurance_card || ''; this.fGuide = a.guide_number || ''; this.fAuth = a.authorization_code || ''; this.fVisit = a.visit_type || ''; this.fTele = a.telehealth_url || '';
     this.outside.set(''); this.ignoreHours = false; this.formOpen.set(true); this.loadPackages(); this.loadSlots();
   }
   onProfChange() { const old = this.lines(); this.lines.set(old.map((l, i) => (i === 0 || !l.professionalId ? { ...l, professionalId: this.fProf } : l))); this.loadSlots(); }
@@ -403,6 +438,10 @@ export class AgendaPage implements OnInit {
     const c = this.fCustomer(); this.packages.set([]); this.alerts.set([]);
     if (!c) return;
     try { this.packages.set(await this.api.get<any[]>(`/customers/${c.id}/packages`)); } catch { /* */ }
+    if (this.health()) {
+      try { const pr: any = await this.api.get(`/patients/${c.id}/profile`); this.profileInsurer = pr.profile?.insurer_id ? pr.profile : null;
+        if (this.profileInsurer && !this.editing() && this.fPayer === 'particular') { this.fPayer = 'convenio'; this.onPayer(); } } catch { /* */ }
+    }
     if (this.auth.can('prontuario.ver') && this.auth.has('prontuario')) { try { const f: any = await this.api.get(`/customers/${c.id}/clinical`); this.alerts.set(f.alerts ?? []); } catch { /* */ } }
   }
   async loadSlots() {
@@ -419,6 +458,8 @@ export class AgendaPage implements OnInit {
     const body: any = {
       professionalId: this.fProf, start: `${this.fDate}T${this.fTime.slice(0, 5)}`, room: this.fRoom || null, notes: this.fNotes || null, ignoreHours: this.ignoreHours || undefined,
       services: lines.map((l) => ({ productId: l.productId, professionalId: l.professionalId || undefined, customerPackageId: l.customerPackageId || undefined, planItemId: l.planItemId || undefined })),
+      ...(this.health() ? { payer: this.fPayer, insurerId: this.fPayer === 'convenio' ? this.fInsurer || undefined : undefined, insuranceCard: this.fCard || undefined, guideNumber: this.fGuide || undefined,
+        authorizationCode: this.fAuth || undefined, visitType: this.fVisit || undefined, telehealthUrl: this.fVisit === 'teleconsulta' && this.fTele ? this.fTele : undefined } : {}),
       ...(this.guest ? { customerId: null, guestName: this.fGuestName.trim(), guestPhone: this.fGuestPhone || null } : { customerId: this.fCustomer().id }),
     };
     this.busy.set(true);
@@ -445,6 +486,7 @@ export class AgendaPage implements OnInit {
     try { await this.api.post(`/appointments/${a.id}/status`, { status, reason }); this.toast.success('Atualizado.'); this.detail.set(null); this.load(); } catch (e) { this.toast.error(e); }
   }
   async complete(a: any) {
+    if (a.payer === 'convenio' && !confirm('Concluir o atendimento e gerar a guia do convênio para faturamento?')) return;
     if (this.billable(a) && !confirm('Há serviços com valor ainda não cobrados. Concluir sem cobrar agora? (Você poderá cobrar depois pelo PDV.)')) return;
     try { await this.api.post(`/appointments/${a.id}/complete`, {}, { idempotent: true }); this.toast.success('Atendimento concluído.'); this.detail.set(null); this.load(); } catch (e) { this.toast.error(e); }
   }

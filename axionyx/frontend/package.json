@@ -1,6 +1,6 @@
 {
   "name": "axionyx-frontend",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "description": "AXIONYX ERP \u2014 interface web (Angular 22, standalone, zoneless)",
   "scripts": {

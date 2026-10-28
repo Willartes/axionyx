@@ -8,7 +8,7 @@ export interface Lookups {
   paymentMethods: { id: string; name: string; kind: string; max_installments: number; fee_pct: number; settlement_days: number }[];
   sellers: { id: string; name: string; commission_pct: number | null }[]; branches: { id: string; code: string; name: string }[];
   accounts: { id: string; name: string; type: string; branch_id: string | null }[]; finCategories: { id: string; code: string; name: string; type: string; dre_group: string }[];
-  professionals: { id: string; name: string; color: string; user_id: string | null; specialty: string | null }[];
+  professionals: { id: string; name: string; color: string; user_id: string | null; specialty: string | null; council_id?: string | null; restrict_records?: boolean }[];
 }
 
 /** Cache dos cadastros auxiliares usados em formulários (recarregado a cada 5 minutos ou sob demanda). */

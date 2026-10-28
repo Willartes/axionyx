@@ -1,3 +1,4 @@
+import { COUNCILS, SPECIALTIES, UFS } from '../saude/saude-shared';
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { IconComponent } from '../../shared/icon.component';
@@ -98,8 +99,16 @@ const KIND: Record<string, string> = { servico: 'Serviço', produto: 'Produto', 
   <ax-modal [(open)]="formOpen" [title]="form.id ? 'Editar profissional' : 'Novo profissional'" icon="user-cog" [width]="680">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" class="grid-2-resp">
       <div><label class="field-label">Nome *</label><input class="input-field" [(ngModel)]="form.name" /></div>
-      <div><label class="field-label">Especialidade / função</label><input class="input-field" [(ngModel)]="form.specialty" placeholder="Dentista, esteticista, cabeleireira…" /></div>
-      <div><label class="field-label">Registro profissional</label><input class="input-field" [(ngModel)]="form.council_id" placeholder="ex.: CRO-SP 12345" /></div>
+      <div><label class="field-label">Especialidade / função</label><input class="input-field" [(ngModel)]="form.specialty" [attr.list]="health() ? 'ax-specs' : null" [placeholder]="health() ? 'ex.: Cardiologia, Psicologia, Fisioterapia…' : 'Dentista, esteticista, cabeleireira…'" />
+        <datalist id="ax-specs">@for (s of specialties; track s) { <option [value]="s"></option> }</datalist></div>
+      @if (!health()) { <div><label class="field-label">Registro profissional</label><input class="input-field" [(ngModel)]="form.council_id" placeholder="ex.: CRO-SP 12345" /></div> }
+      @else {
+        <div style="display:grid;grid-template-columns:110px minmax(0,1fr) 80px;gap:6px"><div><label class="field-label">Conselho</label><select class="input-field" [(ngModel)]="form.council"><option [ngValue]="null">—</option>@for (c of councils; track c) { <option [value]="c">{{ c }}</option> }</select></div>
+          <div><label class="field-label">Nº do registro</label><input class="input-field mono" [(ngModel)]="form.council_number" /></div>
+          <div><label class="field-label">UF</label><select class="input-field" [(ngModel)]="form.council_uf"><option [ngValue]="null">—</option>@for (u of ufs; track u) { <option [value]="u">{{ u }}</option> }</select></div></div>
+        <div><label class="field-label">RQE (especialista, opcional)</label><input class="input-field mono" [(ngModel)]="form.rqe" /></div>
+        <label style="font-size:12px;display:flex;gap:6px;align-items:flex-start;align-self:end;padding-bottom:6px"><input type="checkbox" [(ngModel)]="form.restrict_records" style="margin-top:2px" /> <span><ax-icon name="lock" [size]="12" /> Registros sigilosos por padrão (ex.: psicologia) — só o próprio profissional vê o que escrever</span></label>
+      }
       <div><label class="field-label">Acesso ao sistema (usuário)</label>
         <select class="input-field" [(ngModel)]="form.user_id"><option [ngValue]="null">Sem acesso (só agenda)</option>@for (u of lk.data()?.sellers ?? []; track u.id) { <option [ngValue]="u.id">{{ u.name }}</option> }</select></div>
       <div><label class="field-label">Telefone</label><input class="input-field" [(ngModel)]="form.phone" /></div>
@@ -142,6 +151,7 @@ export class ProfissionaisPage implements OnInit {
   private api = inject(Api); readonly auth = inject(AuthService); private toast = inject(ToastService); readonly lk = inject(LookupsService);
   readonly tab = signal(0); readonly items = signal<any[]>([]); readonly mine = signal<string | null>(null); readonly services = signal<any[]>([]);
   readonly formOpen = signal(false); readonly sel = signal<Record<string, { commission_pct: any; duration_min: any }>>({}); readonly comm = signal<any>(null);
+  readonly health = computed(() => this.auth.has('saude')); readonly councils = COUNCILS; readonly ufs = UFS; readonly specialties = SPECIALTIES;
   readonly days = DAYS; readonly colors = COLORS; form: any = { hours: {} };
   from = todayIso().slice(0, 8) + '01'; to = todayIso(); cstatus = '';
   initials(n: string) { return n.split(/\s+/).slice(0, 2).map((x) => x[0]).join('').toUpperCase(); }
@@ -163,7 +173,7 @@ export class ProfissionaisPage implements OnInit {
   }
   private hoursCopy(wh: any) { const h: any = {}; for (const [d] of DAYS) h[d] = (wh?.[d] ?? []).map((iv: string[]) => [iv[0], iv[1]]); return h; }
   openNew() {
-    this.form = { name: '', specialty: '', council_id: '', user_id: null, phone: '', branch_id: null, color: COLORS[this.items().length % COLORS.length], commission_services_pct: 0, commission_products_pct: 0, slot_min: this.auth.me()?.settings?.agenda?.intervaloMin ?? 30,
+    this.form = { name: '', specialty: '', council_id: '', council: null, council_number: '', council_uf: null, rqe: '', restrict_records: false, user_id: null, phone: '', branch_id: null, color: COLORS[this.items().length % COLORS.length], commission_services_pct: 0, commission_products_pct: 0, slot_min: this.auth.me()?.settings?.agenda?.intervaloMin ?? 30,
       hours: this.hoursCopy({ 1: [['09:00', '12:00'], ['13:00', '18:00']], 2: [['09:00', '12:00'], ['13:00', '18:00']], 3: [['09:00', '12:00'], ['13:00', '18:00']], 4: [['09:00', '12:00'], ['13:00', '18:00']], 5: [['09:00', '12:00'], ['13:00', '18:00']], 6: [['09:00', '13:00']] }) };
     this.sel.set({}); this.formOpen.set(true);
   }
@@ -178,7 +188,7 @@ export class ProfissionaisPage implements OnInit {
   async save() {
     const f = this.form; const n = (v: any) => (v === null || v === undefined || v === '' ? null : Number(v));
     const work_hours: any = {}; for (const [d] of DAYS) if (f.hours[d]?.length) work_hours[d] = f.hours[d].filter((iv: string[]) => iv[0] && iv[1]);
-    const body = { name: f.name, specialty: f.specialty || null, council_id: f.council_id || null, user_id: f.user_id || null, phone: f.phone || null, branch_id: f.branch_id || null, color: f.color,
+    const body = { name: f.name, specialty: f.specialty || null, ...(this.health() ? { council: f.council || null, council_number: f.council_number || null, council_uf: f.council_uf || null, rqe: f.rqe || null, restrict_records: !!f.restrict_records } : { council_id: f.council_id || null }), user_id: f.user_id || null, phone: f.phone || null, branch_id: f.branch_id || null, color: f.color,
       commission_services_pct: Number(f.commission_services_pct || 0), commission_products_pct: Number(f.commission_products_pct || 0), slot_min: Number(f.slot_min || 30), work_hours,
       services: Object.entries(this.sel()).map(([product_id, x]) => ({ product_id, commission_pct: n(x.commission_pct), duration_min: n(x.duration_min) })), ...(f.id ? { active: !!f.active } : {}) };
     try {

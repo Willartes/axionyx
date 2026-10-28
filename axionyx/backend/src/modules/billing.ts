@@ -15,7 +15,7 @@ import {
 /** Rotas da carteira de clientes do AXIONYX — exclusivas do superadministrador da plataforma. */
 function sa(ctx: Ctx, perm = 'carteira.ver') { requirePlatform(ctx, perm) }
 const SA = { perm: 'admin.empresas' }
-const SEGMENTS = ['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'oficina', 'geral'] as const
+const SEGMENTS = ['moda', 'hortifruti', 'adega', 'mercado', 'cosmeticos', 'odontologia', 'estetica', 'salao', 'oficina', 'saude', 'geral'] as const
 const MODES = ['assinatura_cartao', 'link_mensal', 'manual'] as const
 const address = v.object({ cep: v.string().optional(), logradouro: v.string().optional(), numero: v.string().optional(), complemento: v.string().optional(),
   bairro: v.string().optional(), cidade: v.string().optional(), uf: v.string({ max: 2 }).optional(), codigoMunicipio: v.string({ max: 7 }).optional() }).optional()

@@ -9,13 +9,15 @@ import { ToastService } from '../../core/toast.service';
 import { LookupsService } from '../../core/lookups.service';
 import { FMT, addDaysIso, todayIso } from '../../core/format';
 import { APPT_STATUS } from './agenda.page';
+import { ClinicalDocsComponent, PatientProfileComponent, VITALS, vitalsText } from '../saude/saude-shared';
 
 export const PLAN_STATUS: Record<string, [string, string]> = {
   rascunho: ['Rascunho', 'badge-muted'], apresentado: ['Aguardando aprovação', 'badge-warning'], aprovado: ['Aprovado', 'badge-info'], em_andamento: ['Em andamento', 'badge-info'],
   concluido: ['Concluído', 'badge-success'], recusado: ['Recusado', 'badge-danger'], cancelado: ['Cancelado', 'badge-danger'],
 };
 const KINDS: [string, string][] = [['evolucao', 'Evolução / procedimento realizado'], ['ficha_tecnica', 'Ficha técnica (ex.: fórmula de coloração)'], ['avaliacao', 'Avaliação'], ['observacao', 'Observação']];
-const KIND_LABEL: Record<string, string> = { anamnese: 'Anamnese', evolucao: 'Evolução', ficha_tecnica: 'Ficha técnica', avaliacao: 'Avaliação', observacao: 'Observação' };
+const HEALTH_KINDS: [string, string][] = [['consulta', 'Consulta / evolução (SOAP)'], ['sessao', 'Sessão (terapia, fisioterapia…)'], ['avaliacao', 'Avaliação'], ['evolucao', 'Evolução / procedimento realizado'], ['resultado_exame', 'Resultado de exame'], ['observacao', 'Observação']];
+const KIND_LABEL: Record<string, string> = { anamnese: 'Anamnese', evolucao: 'Evolução', ficha_tecnica: 'Ficha técnica', avaliacao: 'Avaliação', observacao: 'Observação', consulta: 'Consulta', sessao: 'Sessão', resultado_exame: 'Resultado de exame' };
 export const CONDITIONS: [string, string, string][] = [
   ['higido', 'Hígido', '#FFFFFF'], ['carie', 'Cárie', '#F5B7B1'], ['restaurado', 'Restaurado', '#AED6F1'], ['canal', 'Tratamento de canal', '#D7BDE2'], ['coroa', 'Coroa', '#F9E79F'],
   ['implante', 'Implante', '#A9DFBF'], ['protese', 'Prótese', '#FAD7A0'], ['extracao_indicada', 'Extração indicada', '#E74C3C'], ['ausente', 'Ausente', '#D5D8DC'],
@@ -31,7 +33,7 @@ const FACES: [string, string][] = [['M', 'Mesial'], ['D', 'Distal'], ['O', 'Oclu
 /** Ficha do cliente/paciente: alertas de saúde, anamnese com consentimento, evolução, odontograma, planos de tratamento, pacotes e atendimentos. */
 @Component({
   selector: 'ax-ficha',
-  imports: [FormsModule, IconComponent, ModalComponent, ...FMT],
+  imports: [FormsModule, IconComponent, ModalComponent, PatientProfileComponent, ClinicalDocsComponent, ...FMT],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     .tooth { width:38px; height:46px; border:1.5px solid #B8C4D0; border-radius:8px 8px 12px 12px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; font-size:11px; font-weight:700; color:#172B3A; position:relative; }
@@ -50,14 +52,14 @@ const FACES: [string, string][] = [['M', 'Mesial'], ['D', 'Distal'], ['O', 'Oclu
     @if (data(); as d) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px">
         <div><div style="font-size:12px;color:#647687">{{ auth.term('prontuario') }}</div>
-          <h1 style="font-size:20px;font-weight:700;color:#172B3A">{{ d.customer.name }}</h1>
-          <div style="font-size:12.5px;color:#647687">{{ d.customer.birth_date ? (d.customer.birth_date | dt) + ' · ' + age(d.customer.birth_date) + ' anos · ' : '' }}{{ (d.customer.whatsapp || d.customer.phone) ? ((d.customer.whatsapp || d.customer.phone) | phone) : 'sem telefone' }}</div></div>
+          <h1 style="font-size:20px;font-weight:700;color:#172B3A">{{ d.customer.social_name || d.customer.name }}@if (d.customer.social_name) { <span style="font-size:12px;font-weight:500;color:#647687"> (registro civil: {{ d.customer.name }})</span> }</h1>
+          <div style="font-size:12.5px;color:#647687">{{ d.customer.birth_date ? (d.customer.birth_date | dt) + ' · ' + age(d.customer.birth_date) + ' anos · ' : '' }}{{ (d.customer.whatsapp || d.customer.phone) ? ((d.customer.whatsapp || d.customer.phone) | phone) : 'sem telefone' }}@if (d.profile?.insurer_name) { <span class="badge badge-info" style="margin-left:6px">{{ d.profile.insurer_name }}{{ d.profile.insurance_card ? ' · ' + d.profile.insurance_card : '' }}</span> }@if (d.profile?.blood_type) { <span class="badge badge-muted" style="margin-left:4px">{{ d.profile.blood_type }}</span> }</div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn-ghost" style="font-size:12px" (click)="router.navigateByUrl('/cliente-detail/' + id)"><ax-icon name="user" [size]="13" /> Cadastro</button>
           @if (auth.can('agenda.editar')) { <button class="btn-secondary" style="font-size:12px" (click)="router.navigate(['/agenda'], { queryParams: { cliente: id } })"><ax-icon name="calendar-plus" [size]="13" /> Agendar</button> }
         </div>
       </div>
-      @if (d.alerts.length) { <div class="state-warning" style="margin:0 0 12px"><ax-icon name="alert-triangle" [size]="15" /><span><b>Alertas da anamnese:</b> {{ d.alerts.join(' · ') }}</span></div> }
+      @if (d.alerts.length) { <div class="state-warning" style="margin:0 0 12px"><ax-icon name="alert-triangle" [size]="15" /><span><b>Alertas de saúde:</b> {{ d.alerts.join(' · ') }}</span></div> }
       @else if (!d.anamnese) { <div class="state-info" style="margin:0 0 12px;display:flex;gap:8px;align-items:center;font-size:12.5px;background:#F0F7FD;border:1px solid #CFE3F5;border-radius:8px;padding:9px 12px"><ax-icon name="info" [size]="14" color="#0875D1" />Sem anamnese registrada. Preencha antes do primeiro procedimento.</div> }
 
       <div class="tabs-bar" style="margin:0 0 14px">
@@ -68,12 +70,23 @@ const FACES: [string, string][] = [['M', 'Mesial'], ['D', 'Distal'], ['O', 'Oclu
         @if (auth.can('prontuario.editar')) {
           <div class="card" style="padding:14px;margin-bottom:14px">
             <div style="display:grid;grid-template-columns:240px 1fr;gap:10px" class="grid-2-resp">
-              <div><label class="field-label">Tipo</label><select class="input-field" [(ngModel)]="rKind">@for (k of kinds; track k[0]) { <option [value]="k[0]">{{ k[1] }}</option> }</select></div>
+              <div><label class="field-label">Tipo</label><select class="input-field" [(ngModel)]="rKind">@for (k of recordKinds(); track k[0]) { <option [value]="k[0]">{{ k[1] }}</option> }</select></div>
               <div><label class="field-label">Título (opcional)</label><input class="input-field" [(ngModel)]="rTitle" /></div>
             </div>
             @if (amending()) { <div style="font-size:12px;color:#D99000;margin-top:6px">Adendo ao registro de {{ amending().created_at | dtt }} — o registro original é preservado. <a style="cursor:pointer;color:#0875D1" (click)="amending.set(null)">cancelar adendo</a></div> }
-            <label class="field-label" style="margin-top:8px">Descrição</label>
-            <textarea class="input-field" rows="4" [(ngModel)]="rContent" placeholder="Procedimento realizado, materiais, orientações, fórmula, observações…"></textarea>
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px;gap:8px"><label class="field-label" style="margin:0">Descrição</label>
+              @if (health()) { <a style="font-size:11.5px;color:#0875D1;cursor:pointer" (click)="soap()">Usar roteiro SOAP</a> }</div>
+            <textarea class="input-field" rows="5" [(ngModel)]="rContent" [placeholder]="health() ? 'Queixa, história, exame, hipótese diagnóstica, conduta e orientações…' : 'Procedimento realizado, materiais, orientações, fórmula, observações…'"></textarea>
+            @if (health()) {
+              <details style="margin-top:8px" [open]="showVitals"><summary style="font-size:12px;cursor:pointer;color:#475B6E" (click)="showVitals = !showVitals">Sinais vitais e medidas</summary>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin-top:8px">
+                  @for (v of vitalsDef; track v[0]) { <div><label class="field-label" style="font-size:11px">{{ v[1] }}{{ v[2] ? ' (' + v[2] + ')' : '' }}</label><input type="number" step="any" class="input-field mono" [(ngModel)]="vitals[v[0]]" /></div> }
+                </div></details>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:8px" class="grid-2-resp">
+                <div><label class="field-label">CID-10 (opcional, separe por vírgula)</label><input class="input-field mono" style="text-transform:uppercase" [(ngModel)]="rCid" placeholder="ex.: J06.9, R51" /></div>
+                <label style="font-size:12px;display:flex;gap:6px;align-items:center;padding-bottom:8px" title="Registro sigiloso: só você (autor) consegue ver. Padrão para profissionais com sigilo ativado, como psicologia."><input type="checkbox" [(ngModel)]="rRestricted" /> <ax-icon name="lock" [size]="12" /> Sigiloso (só eu vejo)</label>
+              </div>
+            }
             <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
               <select class="input-field" style="max-width:320px" [(ngModel)]="rAppt"><option value="">Sem vínculo com atendimento</option>@for (a of d.appointments.slice(0, 15); track a.id) { <option [value]="a.id">{{ a.start_local.slice(0, 10) | dt }} {{ a.start_local.slice(11) }} · {{ svc(a) }}</option> }</select>
               <span style="flex:1"></span>
@@ -84,14 +97,17 @@ const FACES: [string, string][] = [['M', 'Mesial'], ['D', 'Distal'], ['O', 'Oclu
         @for (r of d.records; track r.id) {
           <div class="rec" [style.border-left-color]="r.kind === 'anamnese' ? '#D99000' : r.amends_id ? '#7A4CC2' : '#0875D1'">
             <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#647687">
-              <span><b style="color:#172B3A">{{ kl(r.kind) }}</b>{{ r.title ? ' — ' + r.title : '' }}{{ r.amends_id ? ' (adendo)' : '' }}</span>
-              <span>{{ r.created_at | dtt }} · {{ r.professional || r.author }}</span>
+              <span><b style="color:#172B3A">{{ kl(r.kind) }}</b>{{ r.title ? ' — ' + r.title : '' }}{{ r.amends_id ? ' (adendo)' : '' }}@if (r.visibility === 'restrito') { <span class="badge" style="background:#F1EAFB;color:#7A4CC2;margin-left:4px"><ax-icon name="lock" [size]="10" /> sigiloso</span> }</span>
+              <span>{{ r.created_at | dtt }} · {{ r.professional || r.author }}{{ r.specialty ? ' · ' + r.specialty : '' }}{{ r.professional_council ? ' · ' + r.professional_council : '' }}</span>
             </div>
             @if (r.kind === 'anamnese') { <div style="font-size:12.5px;margin-top:4px">{{ anamneseSummary(r) }}</div> }
             @if (r.content) { <div style="font-size:13px;white-space:pre-wrap;margin-top:4px">{{ r.content }}</div> }
+            @if (r.vitals) { <div style="font-size:12px;color:#18864B;margin-top:4px"><ax-icon name="heart-pulse" [size]="11" /> {{ vt(r.vitals) }}</div> }
+            @if (r.cid_codes?.length) { <div style="font-size:12px;margin-top:3px">CID-10: <span class="mono">{{ r.cid_codes.join(', ') }}</span></div> }
             @if (auth.can('prontuario.editar') && r.kind !== 'anamnese') { <a style="font-size:11px;color:#0875D1;cursor:pointer" (click)="amend(r)">Adicionar adendo</a> }
           </div>
         } @empty { <div class="empty-state">Nenhum registro ainda.</div> }
+        @if (d.hiddenRecords) { <div style="font-size:12px;color:#7A4CC2;display:flex;gap:6px;align-items:center;margin:6px 0"><ax-icon name="lock" [size]="12" /> {{ d.hiddenRecords }} registro(s) sigiloso(s) de outro(s) profissional(is) — acesso restrito ao autor.</div> }
         <p style="font-size:11px;color:#647687">Registros clínicos não podem ser editados nem excluídos: correções são feitas por adendo, preservando o histórico. Cada acesso a esta ficha é registrado na auditoria.</p>
       }
 
@@ -192,6 +208,9 @@ const FACES: [string, string][] = [['M', 'Mesial'], ['D', 'Distal'], ['O', 'Oclu
         </div>
       }
 
+      @if (tab() === 'saude') { <ax-patient-profile [customerId]="id" (saved)="load()" /> }
+      @if (tab() === 'documentos') { <ax-clinical-docs [customerId]="id" [appointments]="d.appointments" /> }
+
       @if (tab() === 'atendimentos') {
         <div class="card" style="overflow:hidden">
           <table class="data-table" style="width:100%;border-collapse:collapse"><thead><tr><th>Data</th><th>{{ auth.term('servicos') }}</th><th>{{ auth.term('profissional') }}</th><th>Situação</th><th class="num">Valor</th></tr></thead>
@@ -262,9 +281,12 @@ const FACES: [string, string][] = [['M', 'Mesial'], ['D', 'Distal'], ['O', 'Oclu
 export class FichaPage implements OnInit {
   private api = inject(Api); readonly router = inject(Router); readonly auth = inject(AuthService); private toast = inject(ToastService); private route = inject(ActivatedRoute); readonly lk = inject(LookupsService);
   id = ''; readonly data = signal<any>(null); readonly tab = signal('historico');
-  readonly kinds = KINDS; readonly conditions = CONDITIONS; readonly faces = FACES; readonly up = UP; readonly low = LOW; readonly upD = UP_D; readonly lowD = LOW_D;
+  readonly kinds = KINDS; readonly vitalsDef = VITALS;
+  readonly health = computed(() => this.auth.has('saude'));
+  readonly recordKinds = computed(() => (this.health() ? HEALTH_KINDS : KINDS)); readonly conditions = CONDITIONS; readonly faces = FACES; readonly up = UP; readonly low = LOW; readonly upD = UP_D; readonly lowD = LOW_D;
   readonly tabs = computed(() => {
     const t: [string, string][] = [['historico', 'Histórico'], ['anamnese', this.auth.term('prontuario') === 'Ficha técnica' ? 'Ficha / anamnese' : 'Anamnese']];
+    if (this.health()) t.push(['documentos', 'Documentos'], ['saude', 'Saúde e convênio']);
     if (this.auth.has('odontograma')) t.push(['odontograma', 'Odontograma'], ['planos', 'Planos de tratamento']);
     if (this.auth.has('pacotes')) t.push(['pacotes', 'Pacotes']);
     t.push(['atendimentos', this.auth.term('atendimentos')]);
@@ -273,8 +295,10 @@ export class FichaPage implements OnInit {
   async ngOnInit() {
     this.id = this.route.snapshot.paramMap.get('id') || '';
     const t = this.route.snapshot.queryParamMap.get('aba'); if (t) this.tab.set(t);
-    this.lk.ensure();
+    const lkP = this.lk.ensure();
+    if (this.health()) this.rKind = 'consulta';
     await this.load();
+    try { const l = await lkP; if (l.professionals.find((x) => x.user_id === this.auth.me()?.user.id)?.restrict_records) this.rRestricted = true; } catch { /* */ }
     try { this.templates.set(await this.api.get<any[]>('/clinical/templates')); this.tplId = this.data()?.anamnese?.data?.template || this.templates()[0]?.id || ''; this.pickTpl(); } catch { /* */ }
     try { const r: any = await this.api.get('/services', { kind: 'servico', size: 500 }); this.services.set(r.items); } catch { /* */ }
     if (this.tab() === 'odontograma') this.loadOdo();
@@ -291,13 +315,18 @@ export class FichaPage implements OnInit {
   planLabel(s: string) { return PLAN_STATUS[s]?.[0] ?? s; }
 
   // ---------- registros ----------
-  rKind = 'evolucao'; rTitle = ''; rContent = ''; rAppt = ''; readonly amending = signal<any>(null);
+  rKind = 'evolucao'; rTitle = ''; rContent = ''; rAppt = ''; rCid = ''; rRestricted = false; showVitals = false; vitals: Record<string, any> = {}; readonly amending = signal<any>(null);
+  vt(v: any) { return vitalsText(v); }
+  soap() { if (!this.rContent.trim()) this.rContent = 'S (subjetivo — queixa e história):\n\nO (objetivo — exame físico):\n\nA (avaliação — hipóteses diagnósticas):\n\nP (plano — conduta, prescrição, orientações, retorno):\n'; }
   amend(r: any) { this.amending.set(r); this.rKind = r.kind; this.rTitle = r.title ? 'Adendo: ' + r.title : 'Adendo'; window.scrollTo({ top: 0, behavior: 'smooth' }); }
   async saveRecord() {
     if (!this.rContent.trim()) { this.toast.error('Descreva o registro.'); return; }
     try {
-      await this.api.post(`/customers/${this.id}/clinical-records`, { kind: this.rKind, title: this.rTitle || undefined, content: this.rContent, appointmentId: this.rAppt || undefined, amendsId: this.amending()?.id });
-      this.rContent = ''; this.rTitle = ''; this.rAppt = ''; this.amending.set(null); this.toast.success('Registrado.'); this.load();
+      const vitals = Object.fromEntries(Object.entries(this.vitals).filter(([, v]) => v !== null && v !== '' && v !== undefined).map(([k, v]) => [k, Number(v)]));
+      const cidCodes = this.rCid.split(/[,;\s]+/).map((x) => x.trim().toUpperCase()).filter(Boolean);
+      await this.api.post(`/customers/${this.id}/clinical-records`, { kind: this.rKind, title: this.rTitle || undefined, content: this.rContent, appointmentId: this.rAppt || undefined, amendsId: this.amending()?.id,
+        ...(this.health() ? { vitals: Object.keys(vitals).length ? vitals : undefined, cidCodes: cidCodes.length ? cidCodes : undefined, visibility: this.rRestricted ? 'restrito' : 'equipe' } : {}) });
+      this.rContent = ''; this.rTitle = ''; this.rAppt = ''; this.rCid = ''; this.vitals = {}; this.amending.set(null); this.toast.success('Registrado.'); this.load();
     } catch (e) { this.toast.error(e); }
   }
 

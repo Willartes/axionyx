@@ -132,7 +132,7 @@ export async function commissionPct(c: Q, professionalId: string, productId: str
 }
 
 export async function addProfessionalCommission(c: Q, p: { companyId: string; branchId: string | null; professionalId: string; kind: 'servico' | 'produto' | 'sessao_pacote';
-  refType: 'venda' | 'cancelamento' | 'devolucao' | 'sessao' | 'estorno_sessao'; refKey: string; saleId?: string | null; saleItemId?: string | null; appointmentId?: string | null;
+  refType: 'venda' | 'cancelamento' | 'devolucao' | 'sessao' | 'estorno_sessao' | 'convenio' | 'estorno_convenio'; refKey: string; saleId?: string | null; saleItemId?: string | null; appointmentId?: string | null;
   description?: string; base: number; pct: number; amount?: number }) {
   const amount = p.amount ?? r2(p.base * p.pct / 100)
   if (amount === 0) return // 0% (ex.: dono que também atende) não gera lançamento
@@ -167,6 +167,18 @@ export async function completeAppointment(c: Q, a: { companyId: string; userId: 
     if (s.plan_item_id) {
       await c.query(`UPDATE treatment_plan_items SET status = 'realizado', performed_at = now(), professional_id = COALESCE(professional_id, $2) WHERE id = $1 AND status = 'pendente'`, [s.plan_item_id, s.professional_id])
       await refreshPlanStatus(c, s.plan_item_id)
+    }
+  }
+  // convênio: cada procedimento realizado (não coberto por pacote/plano e ainda não cobrado) vira guia a faturar, com o preço da tabela do convênio
+  if (ap.payer === 'convenio' && ap.insurer_id) {
+    const tz = (await c.one(`SELECT COALESCE(settings->'agenda'->>'fusoHorario', 'America/Sao_Paulo') AS tz FROM companies WHERE id = $1`, [a.companyId])).tz
+    for (const s of services.filter((x) => !x.customer_package_id && !x.plan_item_id && !x.sale_item_id && !x.claim_id)) {
+      const pr = await c.one(`SELECT price, tuss_code FROM insurer_prices WHERE insurer_id = $1 AND product_id = $2`, [ap.insurer_id, s.product_id])
+      const claim = await c.one(`INSERT INTO insurance_claims(company_id, branch_id, insurer_id, customer_id, professional_id, appointment_id, appointment_service_id, product_id, description, tuss_code, amount, service_date, insurance_card, guide_number, authorization_code)
+                                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,($12::timestamptz AT TIME ZONE $16)::date,$13,$14,$15) ON CONFLICT (appointment_service_id) DO NOTHING RETURNING id`,
+        [a.companyId, ap.branch_id, ap.insurer_id, ap.customer_id, s.professional_id, ap.id, s.id, s.product_id, s.name, pr?.tuss_code ?? null, pr ? Number(pr.price) : Number(s.price), ap.start_at,
+          ap.insurance_card, ap.guide_number, ap.authorization_code, tz])
+      if (claim) await c.query(`UPDATE appointment_services SET claim_id = $2 WHERE id = $1`, [s.id, claim.id])
     }
   }
   await c.query(`UPDATE appointment_services SET status = 'realizado' WHERE appointment_id = $1 AND status = 'pendente'`, [ap.id])

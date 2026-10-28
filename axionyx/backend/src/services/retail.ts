@@ -97,12 +97,13 @@ export async function expandItems(c: Q, companyId: string, items: RawItem[], set
       // serviço do atendimento: preço e profissional vêm do agendamento (o cliente não define o valor)
       if (seen.has('as:' + it.appointmentServiceId)) throw unprocessable(`Item ${n}: serviço do atendimento repetido.`)
       seen.add('as:' + it.appointmentServiceId)
-      const s = await c.one(`SELECT s.*, a.customer_id, a.status AS appt_status, p.name FROM appointment_services s JOIN appointments a ON a.id = s.appointment_id JOIN products p ON p.id = s.product_id
+      const s = await c.one(`SELECT s.*, a.customer_id, a.status AS appt_status, a.payer, p.name FROM appointment_services s JOIN appointments a ON a.id = s.appointment_id JOIN products p ON p.id = s.product_id
                               WHERE s.id = $1 AND s.company_id = $2 FOR UPDATE OF s`, [it.appointmentServiceId, companyId])
       if (!s) throw unprocessable(`Item ${n}: serviço do atendimento não encontrado.`)
       if (['cancelado', 'faltou'].includes(s.appt_status) || s.status === 'cancelado') throw unprocessable(`Item ${n}: atendimento cancelado.`)
       if (s.sale_item_id) throw unprocessable(`Item ${n}: "${s.name}" deste atendimento já foi cobrado.`)
       if (s.customer_package_id || s.plan_item_id) throw unprocessable(`Item ${n}: "${s.name}" é coberto por pacote/plano de tratamento e não é cobrado aqui.`)
+      if (s.payer && s.payer !== 'particular') throw unprocessable(`Item ${n}: "${s.name}" é atendimento ${s.payer === 'convenio' ? 'por convênio (vira guia a faturar ao concluir)' : 'de cortesia'} e não é cobrado do paciente.`)
       if (!(Number(s.price) > 0)) throw unprocessable(`Item ${n}: "${s.name}" está sem valor no atendimento.`)
       out.push({ variantId: s.variant_id, qty: 1, discount: it.discount, unitPriceOverride: Number(s.price), professionalId: s.professional_id,
         appointmentServiceId: s.id, appointmentId: s.appointment_id, expectCustomerId: s.customer_id })

@@ -44,6 +44,9 @@ export const PERMISSIONS: { group: string; items: { code: string; label: string 
     { code: 'profissionais.editar', label: 'Cadastrar profissionais, horários e comissões' },
     { code: 'prontuario.ver', label: 'Ver prontuário, fichas, odontograma e planos de tratamento (dados de saúde)' },
     { code: 'prontuario.editar', label: 'Registrar anamnese, evolução, odontograma e planos de tratamento' },
+    { code: 'prontuario.documentos', label: 'Emitir receitas, atestados, declarações, pedidos de exame e encaminhamentos (só no próprio nome, com registro no conselho)' },
+    { code: 'convenios.ver', label: 'Ver convênios, carteirinhas e guias' },
+    { code: 'convenios.editar', label: 'Cadastrar convênios e tabelas de preço, enviar lotes e registrar pagamentos e glosas' },
   ]},
   { group: 'Oficina', items: [
     { code: 'oficina.ver', label: 'Ver ordens de serviço e veículos' },
@@ -117,11 +120,21 @@ export const DEFAULT_ROLES: { name: string; description: string; maxDiscount: nu
       'condicional.ver', 'condicional.editar', 'comissoes.ver', 'fidelidade.ver', 'crm.ver', 'agenda.ver', 'agenda.editar', 'agenda.todas', 'oficina.ver', 'oficina.editar'] },
   { name: 'Profissional', description: 'Atende na agenda (dentista, esteticista, cabeleireiro, mecânico...): própria agenda, prontuário e venda no PDV', maxDiscount: 10,
     permissions: ['dashboard.ver', 'clientes.ver', 'clientes.editar', 'produtos.ver', 'estoque.ver', 'vendas.ver', 'vendas.criar', 'comissoes.ver', 'fidelidade.ver',
-      'agenda.ver', 'agenda.editar', 'prontuario.ver', 'prontuario.editar', 'oficina.ver', 'oficina.editar'] },
+      'agenda.ver', 'agenda.editar', 'prontuario.ver', 'prontuario.editar', 'prontuario.documentos', 'convenios.ver', 'oficina.ver', 'oficina.editar'] },
   { name: 'Financeiro', description: 'Contas a pagar/receber, crediário e conciliação', maxDiscount: 0,
     permissions: ['dashboard.ver', 'clientes.ver', 'financeiro.ver', 'financeiro.editar', 'financeiro.baixar', 'financeiro.renegociar', 'financeiro.conciliar',
       'relatorios.ver', 'fiscal.ver', 'vendas.ver', 'vendas.todas', 'contabilidade.ver', 'comissoes.ver', 'compras.ver', 'documentos.ver', 'precificacao.ver', 'precificacao.editar'] },
   { name: 'Estoquista', description: 'Entradas, transferências, inventário e etiquetas', maxDiscount: 0,
     permissions: ['dashboard.ver', 'produtos.ver', 'produtos.editar', 'cadastros.ver', 'cadastros.editar', 'estoque.ver', 'estoque.movimentar', 'estoque.transferir',
       'estoque.inventario', 'estoque.lotes', 'estoque.perdas', 'compras.ver', 'compras.editar', 'relatorios.ver'] },
+]
+
+/** Perfis criados ao aplicar o segmento de saúde: recepção e gestão SEM acesso ao conteúdo clínico (sigilo profissional / LGPD). */
+const CLINICAL = ['prontuario.ver', 'prontuario.editar', 'prontuario.documentos']
+export const HEALTH_ROLES: { name: string; description: string; maxDiscount: number; permissions: string[] }[] = [
+  { name: 'Recepcionista', description: 'Agenda de todos, chegada e chamada de pacientes, cadastro, convênios (consulta) e caixa — sem acesso ao prontuário', maxDiscount: 5,
+    permissions: ['dashboard.ver', 'clientes.ver', 'clientes.editar', 'produtos.ver', 'estoque.ver', 'vendas.ver', 'vendas.criar', 'caixa.operar', 'fidelidade.ver',
+      'agenda.ver', 'agenda.editar', 'agenda.todas', 'convenios.ver', 'mensagens.enviar', 'crm.ver'] },
+  { name: 'Gerente da clínica', description: 'Gestão administrativa e financeira da clínica (agenda, convênios, financeiro, relatórios) — sem acesso ao prontuário', maxDiscount: 30,
+    permissions: ALL_PERMISSIONS.filter((p) => !p.startsWith('admin.') && p !== 'config.editar' && p !== 'rh.salarios' && p !== 'clientes.dados_pessoais' && !CLINICAL.includes(p)) },
 ]

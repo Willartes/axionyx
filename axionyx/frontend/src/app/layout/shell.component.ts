@@ -274,7 +274,7 @@ export class ShellComponent implements OnInit, OnDestroy {
     const me = this.me(); if (!me) return [];
     const mods = new Set(me.company.modules || []);
     const moduleOf: Record<string, string> = { condicionais: 'condicional', consignacoes: 'consignacao', fidelidade: 'fidelidade', crm: 'crm', rh: 'rh', juridico: 'juridico', contabilidade: 'contabilidade', fiscal: 'fiscal', precificacao: 'precificacao', validade: 'validade', combos: 'combos',
-      agenda: 'agenda', servicos: 'agenda', profissionais: 'agenda', 'planos-tratamento': 'odontograma', 'inteligencia-servicos': 'agenda', oficina: 'oficina', veiculos: 'oficina', 'oficina-painel': 'oficina' };
+      agenda: 'agenda', servicos: 'agenda', profissionais: 'agenda', 'planos-tratamento': 'odontograma', 'inteligencia-servicos': 'agenda', oficina: 'oficina', veiculos: 'oficina', 'oficina-painel': 'oficina', recepcao: 'saude', convenios: 'saude', 'saude-painel': 'saude' };
     const sa = !!me.user?.is_superadmin, bill = me.billing;
     if (bill?.blocked && !sa) return [{ title: 'ASSINATURA', items: NAV.flatMap((s) => s.items).filter((i) => i.id === 'minha-assinatura') }];
     return NAV.map((s) => ({ ...s, items: s.items.filter((i) => (!i.sa || this.auth.pcan(i.sa)) && (!i.billing || !!bill) && (!i.perm || this.auth.can(i.perm)) && (!moduleOf[i.id] || mods.has(moduleOf[i.id]))) })).filter((s) => s.items.length);
