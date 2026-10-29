@@ -169,13 +169,15 @@ export class AdminEmpresasPage implements OnInit {
             <td style="font-size:12px">{{ u.all_branches ? 'Todas' : (u.branches || '—') }}</td>
             <td>@if (u.mfa_enabled) { <ax-icon name="shield-check" [size]="14" color="#18864B" /> } @else { <span class="muted" style="font-size:11px">não</span> }</td>
             <td class="mono" style="font-size:12px">{{ u.last_login_at | dtt }}</td>
-            <td>@if (locked(u)) { <span class="badge badge-danger">Bloqueado</span> } @else if (u.pending_activation && u.active) { <span class="badge badge-warning" [title]="inviteTitle(u)">Aguardando ativação</span> } @else { <span class="badge" [class]="u.active ? 'badge badge-success' : 'badge badge-muted'">{{ u.active ? 'Ativo' : 'Inativo' }}</span> }
+            <td>@if (locked(u)) { <span class="badge badge-danger">Bloqueado</span> } @else if (u.invite_pending) { <span class="badge badge-warning" title="A pessoa já tem conta no AXIONYX e precisa aceitar o convite ao entrar">Convite pendente</span> } @else if (u.pending_activation && u.active) { <span class="badge badge-warning" [title]="inviteTitle(u)">Aguardando ativação</span> } @else { <span class="badge" [class]="u.active ? 'badge badge-success' : 'badge badge-muted'">{{ u.active ? 'Ativo' : 'Inativo' }}</span> }
               @if (u.last_email?.status === 'erro') { <div style="font-size:10.5px;color:#C93636" [title]="u.last_email.error">e-mail não enviado</div> }</td>
             <td><div style="display:flex;gap:4px">
               <button class="btn-ghost" style="padding:3px 5px" (click)="edit(u)" aria-label="Editar"><ax-icon name="pencil" [size]="13" /></button>
-              <button class="btn-ghost" style="padding:3px 5px;font-size:11px" (click)="resetPwd(u)">{{ u.pending_activation ? 'Convite' : 'Senha' }}</button>
-              @if (u.mfa_enabled) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px" (click)="resetMfa(u)">Zerar MFA</button> }
-              @if (u.id !== auth.me()?.user?.id) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px" [style.color]="u.active ? '#C93636' : '#18864B'" (click)="toggle(u)">{{ u.active ? 'Desativar' : 'Ativar' }}</button> }
+              @if (!u.shared_account && !u.invite_pending) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px" (click)="resetPwd(u)">{{ u.pending_activation ? 'Convite' : 'Senha' }}</button> }
+              @else if (u.shared_account) { <span class="muted" style="font-size:10.5px;padding:3px 5px" title="Conta usada também em outra empresa: a própria pessoa redefine a senha pelo &quot;Esqueci minha senha&quot;">conta compartilhada</span> }
+              @if (u.mfa_enabled && !u.shared_account) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px" (click)="resetMfa(u)">Zerar MFA</button> }
+              @if (u.invite_pending) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px;color:#C93636" (click)="cancelInvite(u)">Cancelar convite</button> }
+              @else if (u.id !== auth.me()?.user?.id) { <button class="btn-ghost" style="padding:3px 5px;font-size:11px" [style.color]="u.active ? '#C93636' : '#18864B'" (click)="toggle(u)">{{ u.active ? 'Desativar' : 'Ativar' }}</button> }
             </div></td>
           </tr>
         }</tbody>
@@ -224,11 +226,12 @@ export class AdminUsuariosPage implements OnInit {
       else {
         if (this.delivery() === 'manual' && !this.manualPwd()) { this.toast.error('Informe a senha ou escolha outra forma de acesso.'); return; }
         const r: any = await this.api.post('/admin/users', { ...body, email: f.email, ...deliveryBody(this.delivery(), this.manualPwd()) });
-        if (r.invite || r.temporaryPassword || r.linkedExisting) { this.accUser.set({ name: f.name, email: f.email }); this.accEndpoint.set(null); this.accResult.set(r); this.accOpen.set(true); }
+        if (r.invite || r.temporaryPassword || r.invitedExisting) { this.accUser.set({ name: f.name, email: f.email }); this.accEndpoint.set(null); this.accResult.set(r); this.accOpen.set(true); }
       }
       this.toast.success('Usuário salvo.'); this.open.set(false); this.list.reload(); this.lk.invalidate();
     } catch (e) { this.toast.error(e); }
   }
+  async cancelInvite(u: any) { if (!confirm(`Cancelar o convite de ${u.name}?`)) return; try { await this.api.put('/admin/users/' + u.id, { active: false }); this.toast.success('Convite cancelado.'); this.list.reload(); } catch (e) { this.toast.error(e); } }
   async toggle(u: any) { try { await this.api.put('/admin/users/' + u.id, { active: !u.active }); this.list.reload(); } catch (e) { this.toast.error(e); } }
   resetPwd(u: any) { this.accUser.set(u); this.accResult.set(null); this.accEndpoint.set(`/admin/users/${u.id}/reset-password`); this.accOpen.set(true); }
   async resetMfa(u: any) { if (!confirm(`Desativar a autenticação em dois fatores de ${u.name}?`)) return; try { await this.api.post(`/admin/users/${u.id}/reset-mfa`); this.toast.success('MFA redefinido.'); this.list.reload(); } catch (e) { this.toast.error(e); } }
@@ -347,7 +350,8 @@ const SEGMENT_MODULES = [
       <div style="width:44px;height:44px;border-radius:10px;background:#0B1F33;display:flex;align-items:center;justify-content:center"><ax-icon [name]="auth.me()?.segment?.icon || 'store'" [size]="22" color="#fff" /></div>
       <div style="flex:1;min-width:220px"><div style="font-size:11px;font-weight:600;color:#647687;text-transform:uppercase">Segmento da empresa</div><div style="font-size:16px;font-weight:700">{{ auth.me()?.segment?.name || 'Moda e vestuário' }}</div>
         <div style="font-size:12px;color:#647687">O pacote do segmento ativa os módulos e categorias do ramo. Aplicar outro segmento só acrescenta — nada é apagado.</div></div>
-      <button class="btn-secondary" style="font-size:12px" (click)="segOpen.set(true)"><ax-icon name="repeat" [size]="13" /> Aplicar outro segmento</button>
+      @if (canManage()) { <button class="btn-secondary" style="font-size:12px" (click)="segOpen.set(true)"><ax-icon name="repeat" [size]="13" /> Aplicar outro segmento</button> }
+      @else { <span class="muted" style="font-size:12px;max-width:340px">Módulos e segmento seguem o seu contrato. Para incluir um módulo, fale com o suporte AXIONYX.</span> }
     </div>
     <div class="section-title" style="margin:0 0 10px">Recursos do segmento</div>
     <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px;margin-bottom:22px">
@@ -358,7 +362,7 @@ const SEGMENT_MODULES = [
             <div style="flex:1"><div style="font-size:14px;font-weight:700;color:#172B3A">{{ m.nome }}</div><div style="font-size:12px;color:#647687;margin-top:2px">{{ m.desc }}</div></div>
             <span class="badge" [class]="on(m.id) ? 'badge badge-success' : 'badge badge-muted'">{{ on(m.id) ? 'Ativo' : 'Inativo' }}</span>
           </div>
-          <button [class]="on(m.id) ? 'btn-ghost' : 'btn-secondary'" style="font-size:11px" [style.color]="on(m.id) ? '#C93636' : null" (click)="toggle(m.id)">{{ on(m.id) ? 'Desativar' : 'Ativar' }}</button>
+          @if (canManage()) { <button [class]="on(m.id) ? 'btn-ghost' : 'btn-secondary'" style="font-size:11px" [style.color]="on(m.id) ? '#C93636' : null" (click)="toggle(m.id)">{{ on(m.id) ? 'Desativar' : 'Ativar' }}</button> } @else { <span class="badge" [class]="on(m.id) ? 'badge badge-success' : 'badge badge-muted'">{{ on(m.id) ? 'Ativo' : 'Não contratado' }}</span> }
         </div>
       }
     </div>
@@ -372,7 +376,7 @@ const SEGMENT_MODULES = [
             <span class="badge" [class]="on(m.id) ? 'badge badge-success' : 'badge badge-muted'">{{ on(m.id) ? 'Ativo' : 'Inativo' }}</span>
           </div>
           @if (m.core) { <div class="muted" style="font-size:11px">Módulo essencial — sempre ativo.</div> }
-          @else { <button [class]="on(m.id) ? 'btn-ghost' : 'btn-secondary'" style="font-size:11px" [style.color]="on(m.id) ? '#C93636' : null" (click)="toggle(m.id)">{{ on(m.id) ? 'Desativar' : 'Ativar' }}</button> }
+          @else { @if (canManage()) { <button [class]="on(m.id) ? 'btn-ghost' : 'btn-secondary'" style="font-size:11px" [style.color]="on(m.id) ? '#C93636' : null" (click)="toggle(m.id)">{{ on(m.id) ? 'Desativar' : 'Ativar' }}</button> } @else { <span class="badge" [class]="on(m.id) ? 'badge badge-success' : 'badge badge-muted'">{{ on(m.id) ? 'Ativo' : 'Não contratado' }}</span> } }
         </div>
       }
     </div>
@@ -393,8 +397,9 @@ const SEGMENT_MODULES = [
 export class AdminModulosPage implements OnInit {
   private api = inject(Api); readonly auth = inject(AuthService); private toast = inject(ToastService);
   readonly mods = MODULES; readonly segMods = SEGMENT_MODULES; readonly active = signal<Set<string>>(new Set()); readonly version = signal('');
+  readonly canManage = () => !!this.auth.me()?.platform && (this.auth.me()!.platform!.owner || this.auth.pcan('suporte.editar'));
   readonly segOpen = signal(false); readonly segments = signal<any[]>([]); readonly busy = signal(false); segPick = '';
-  ngOnInit() { this.active.set(new Set(this.auth.me()?.company?.modules ?? [])); this.api.get<any>('/health').then((h) => this.version.set(h.version)).catch(() => {}); this.api.get<any>('/segments').then((r) => this.segments.set(r.segments), () => {}); this.segPick = this.auth.me()?.segment?.id ?? ''; }
+  ngOnInit() { this.active.set(new Set(this.auth.me()?.company?.modules ?? [])); this.api.get<any>('/version').then((h) => this.version.set(h.version)).catch(() => {}); this.api.get<any>('/segments').then((r) => this.segments.set(r.segments), () => {}); this.segPick = this.auth.me()?.segment?.id ?? ''; }
   async applySeg() {
     this.busy.set(true);
     try { const r: any = await this.api.post(`/admin/companies/${this.auth.me()!.company.id}/segment`, { segment: this.segPick }); await this.auth.loadMe(); this.active.set(new Set(this.auth.me()?.company?.modules ?? []));

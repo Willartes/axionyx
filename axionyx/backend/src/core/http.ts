@@ -81,8 +81,16 @@ export const metrics = { startedAt: Date.now(), requests: 0, errors: 0, byStatus
 
 // ---------- Rate limit em memória (login e rotas sensíveis) ----------
 const buckets = new Map<string, { n: number; reset: number }>()
+const MAX_BUCKETS = 100_000
+let lastSweep = 0
 export function rateLimit(key: string, max: number, windowMs: number) {
   const now = Date.now()
+  // limpeza periódica das janelas vencidas (evita crescimento sem limite da memória)
+  if (now - lastSweep > 60_000 || buckets.size > MAX_BUCKETS) {
+    lastSweep = now
+    for (const [k, b] of buckets) if (b.reset < now) buckets.delete(k)
+    if (buckets.size > MAX_BUCKETS) { const drop = buckets.size - MAX_BUCKETS; let i = 0; for (const k of buckets.keys()) { if (i++ >= drop) break; buckets.delete(k) } }
+  }
   const b = buckets.get(key)
   if (!b || b.reset < now) { buckets.set(key, { n: 1, reset: now + windowMs }); return }
   b.n++
@@ -102,9 +110,19 @@ async function readBody(req: IncomingMessage, max: number): Promise<Buffer> {
   })
 }
 
+/**
+ * IP real do visitante. O cabeçalho X-Forwarded-For pode ser escrito pelo próprio visitante; só são confiáveis as entradas
+ * acrescentadas pelos proxies da infraestrutura (Railway = 1). TRUST_PROXY_HOPS ajusta (0 = ignora o cabeçalho; 2 = Cloudflare com proxy ligado + Railway).
+ */
 export function clientIp(req: IncomingMessage): string {
+  const hops = Math.max(0, Math.min(5, Number(process.env.TRUST_PROXY_HOPS ?? 1) || 0))
   const xf = req.headers['x-forwarded-for']
-  return (typeof xf === 'string' ? xf.split(',')[0].trim() : '') || req.socket.remoteAddress || ''
+  if (hops > 0 && typeof xf === 'string' && xf.trim()) {
+    const list = xf.split(',').map((x) => x.trim()).filter(Boolean)
+    const ip = list[Math.max(0, list.length - hops)]
+    if (ip && ip.length <= 64) return ip
+  }
+  return req.socket.remoteAddress || ''
 }
 
 /** Resolve a sessão a partir do Bearer token e carrega permissões do perfil na empresa selecionada. */
@@ -152,8 +170,14 @@ async function authenticate(req: IncomingMessage, required: Stage): Promise<Auth
   return user
 }
 
+/**
+ * Dados sensíveis (LGPD art. 11 — saúde; salários) não são liberados à equipe da plataforma só por ser superadministrador:
+ * suporte não lê prontuário, documentos clínicos nem salários dos clientes.
+ */
+export const PLATFORM_BLOCKED = new Set(['prontuario.ver', 'prontuario.editar', 'prontuario.documentos', 'rh.salarios'])
 export function can(user: AuthUser, perm: string): boolean {
-  return user.isSuperadmin || user.permissions.has(perm)
+  if (user.isSuperadmin) return !PLATFORM_BLOCKED.has(perm)
+  return user.permissions.has(perm)
 }
 export function requirePerm(user: AuthUser, perm: string | string[]) {
   const list = Array.isArray(perm) ? perm : [perm]
@@ -250,6 +274,9 @@ export function securityHeaders(res: ServerResponse) {
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('Referrer-Policy', 'no-referrer')
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()')
+  if (config.env === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
 }
 
 export async function handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -268,7 +295,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     }
     const m = url.pathname.match(route.re)!
     const params: Record<string, string> = {}
-    route.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])))
+    try { route.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1]))) } catch { throw badRequest('Endereço inválido.') }
     const query: Record<string, string> = {}
     url.searchParams.forEach((v, k) => (query[k] = v))
     const raw = ['GET', 'HEAD', 'DELETE'].includes(method) ? Buffer.alloc(0) : await readBody(req, route.opts.maxBody || 2_000_000)

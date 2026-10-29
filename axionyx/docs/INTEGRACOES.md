@@ -100,14 +100,14 @@ Não há automação por WhatsApp Web, bibliotecas não oficiais ou envio em mas
 | Variável | Descrição |
 |---|---|
 | `ECOMMERCE_API_URL` / `ECOMMERCE_API_TOKEN` | API da loja virtual (ou de um middleware) |
-| `ECOMMERCE_WEBHOOK_SECRET` | Segredo para validar o webhook de pedidos |
+| `ECOMMERCE_WEBHOOK_SECRET` | Segredo da plataforma; cada integração recebe um segredo próprio derivado dele |
 
 **Saída (ERP → loja)**, via fila com reprocessamento automático (backoff exponencial):
 - `PUT /inventory/{sku}` — `{ "sku": "...", "quantity": 10 }` a cada movimento de estoque;
 - `POST /products` / `PUT /products/{externalId}` — produto com variações (`reference`, `name`, `description`, `price`, `active`, `variants[] {sku, barcode, size, color, price, stock}`); só reenvia se o conteúdo mudou (hash).
 
 **Entrada (loja → ERP)**: `POST /api/webhooks/ecommerce/{integrationId}`
-- cabeçalho `X-Signature`: HMAC-SHA256 hexadecimal do corpo bruto com `ECOMMERCE_WEBHOOK_SECRET`;
+- cabeçalho `X-Signature`: HMAC-SHA256 hexadecimal do corpo bruto com o **segredo da própria integração** (Integrações › Segredo do webhook — exclusivo de cada loja; a assinatura de uma loja não vale para outra empresa);
 - corpo:
 ```json
 { "id": "PED-1001", "customer": { "name": "Fulana", "email": "f@ex.com", "document": "52998224725", "phone": "11999999999" },

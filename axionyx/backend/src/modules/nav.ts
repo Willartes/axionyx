@@ -78,9 +78,14 @@ router.get('/api/search', {}, async (ctx) => {
 })
 
 /** Verificação de saúde (usada pela tela de abertura). */
+export const APP_VERSION = '1.10.2'
+/** Verificação pública: só diz se está no ar (sem versão/detalhes, que ajudariam a mapear o sistema). */
 router.get('/api/health', { auth: 'none' }, async () => {
-  const t0 = Date.now()
   await db.query('SELECT 1')
+  return { ok: true, db: 'ok' }
+})
+/** Versão e migrações: só para usuários autenticados. */
+router.get('/api/version', {}, async () => {
   const m = await db.one(`SELECT count(*)::int AS n FROM schema_migrations`)
-  return { ok: true, db: 'ok', latencyMs: Date.now() - t0, migrations: m.n, version: '1.10.1' }
+  return { version: APP_VERSION, migrations: m.n }
 })

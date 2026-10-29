@@ -1,6 +1,6 @@
 import os from 'node:os'
-import { router, audit, paged, Where, metrics, can, requirePerm } from '../core/http'
-import { db, tx, pool } from '../core/db'
+import { router, audit, paged, Where, metrics, can, requirePerm, rateLimit, Ctx } from '../core/http'
+import { db, tx, pool, Q } from '../core/db'
 import { v, parse, onlyDigits, isValidCNPJ } from '../core/validate'
 import { notFound, unprocessable, conflict, forbidden } from '../core/errors'
 import { hashPassword, passwordPolicy, randomCode } from '../core/crypto'
@@ -8,6 +8,7 @@ import { PERMISSIONS, ALL_PERMISSIONS } from '../core/permissions'
 import { bootstrapCompany } from '../services/bootstrap'
 import { getSettings, sanitizeSettings } from '../services/settings'
 import { requirePlatform } from '../core/platform'
+import { notifyCompanyInvite } from '../services/activation'
 import { sendActivation, inviteOrFallback, emailDeliveryAvailable, unusablePasswordHash, INVITE_SQL } from '../services/activation'
 
 const address = v.object({ cep: v.string().optional(), logradouro: v.string().optional(), numero: v.string().optional(), complemento: v.string().optional(),
@@ -41,6 +42,9 @@ router.put('/api/admin/companies/:id', { perm: 'admin.empresas' }, async (ctx) =
   const b: any = parse(v.object({ name: v.string({ min: 2 }).optional(), trade_name: v.string().optional(), cnpj: v.string().optional(), ie: v.string().optional(),
     tax_regime: v.enum(['simples', 'presumido', 'real', 'mei'] as const).optional(), crt: v.int({ min: 1, max: 4 }).optional(), address, phone: v.string().optional(), email: v.email().optional(), color: v.string().optional(),
     modules: v.array(v.string()).optional(), active: v.boolean().optional() }), ctx.body)
+  // módulos contratados e situação da empresa são definidos pela plataforma (contrato), não pelo cliente
+  if (('modules' in b || 'active' in b) && !(ctx.user.isSuperadmin && (ctx.user.platformOwner || ctx.user.platformPerms.has('suporte.editar'))))
+    throw forbidden('Módulos e situação da empresa são alterados pela equipe AXIONYX conforme o contrato.')
   if (b.cnpj) { if (!isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.'); b.cnpj = onlyDigits(b.cnpj) }
   const keys = Object.keys(b)
   if (!keys.length) throw unprocessable('Nada para alterar.')
@@ -93,7 +97,8 @@ router.get('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
   // o superadministrador (suporte da plataforma) não aparece nem conta como usuário da empresa cliente
   w.add('NOT u.is_superadmin')
   if (ctx.query.q) w.add('(u.name ILIKE ? OR u.email ILIKE ?)', `%${ctx.query.q}%`, `%${ctx.query.q}%`)
-  return paged(db, `SELECT u.id, u.name, u.email, u.active AND uc.active AS active, u.mfa_enabled, u.last_login_at, u.locked_until, u.created_at, r.id AS role_id, r.name AS role, u.pending_activation, u.must_change_password, ${INVITE_SQL('u.id')},
+  return paged(db, `SELECT u.id, u.name, u.email, u.active AND uc.active AS active, u.mfa_enabled, u.last_login_at, u.locked_until, u.created_at, r.id AS role_id, r.name AS role, u.pending_activation, u.must_change_password, ${INVITE_SQL('u.id')}, uc.invite_pending, uc.invited_at,
+                           (SELECT count(*)::int FROM user_companies o WHERE o.user_id = u.id AND o.company_id <> uc.company_id AND o.active AND NOT o.invite_pending) > 0 AS shared_account,
                            uc.all_branches, uc.is_seller, uc.commission_pct,
                            COALESCE((SELECT array_agg(ub.branch_id) FROM user_branches ub WHERE ub.user_id = u.id AND ub.company_id = uc.company_id), '{}') AS branch_ids,
                            COALESCE((SELECT string_agg(b.name, ', ') FROM user_branches ub JOIN branches b ON b.id = ub.branch_id WHERE ub.user_id = u.id AND ub.company_id = uc.company_id), '') AS branches
@@ -122,6 +127,25 @@ async function saveBranches(c: any, companyId: string, userId: string, all: bool
   for (const b of ids) await c.query(`INSERT INTO user_branches(user_id, company_id, branch_id) VALUES ($1,$2,$3)`, [userId, companyId, b])
 }
 
+/**
+ * A conta de login é única no sistema todo e pode ter acesso a várias empresas. O administrador de UMA empresa só altera
+ * senha, MFA e nome de contas que pertencem exclusivamente à empresa dele (vínculo ativo só ali). Conta usada em outras
+ * empresas é da própria pessoa: ela redefine pelo "Esqueci minha senha". Equipe da plataforma com "Alterar dados" pode intervir (auditado).
+ */
+async function companyUser(c: Q | typeof db, ctx: Ctx, userId: string) {
+  const u = await c.one(`SELECT u.id, u.name, u.email, u.pending_activation,
+                                (SELECT count(*)::int FROM user_companies o WHERE o.user_id = u.id AND o.company_id <> $2 AND o.active AND NOT o.invite_pending) AS other_companies
+                           FROM users u JOIN user_companies uc ON uc.user_id = u.id AND uc.company_id = $2 AND NOT uc.invite_pending
+                          WHERE u.id = $1 AND NOT u.is_superadmin`, [userId, ctx.user.companyId])
+  if (!u) throw notFound('Usuário')
+  return u
+}
+function requireExclusive(ctx: Ctx, u: any, what: string) {
+  if (u.other_companies === 0) return
+  if (ctx.user.isSuperadmin && (ctx.user.platformOwner || ctx.user.platformPerms.has('suporte.editar'))) return
+  throw forbidden(`Esta pessoa também usa o AXIONYX em outra empresa, então ${what} só pode ser feito por ela mesma (opção "Esqueci minha senha" na tela de login) ou pelo suporte da plataforma. Você pode remover o acesso dela a esta empresa.`)
+}
+
 router.post('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
   const b = parse(v.object(userSchema), ctx.body)
   const mode = resolveDelivery(b.password, b.delivery)
@@ -131,24 +155,27 @@ router.post('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
     const role = await c.one(`SELECT id, permissions FROM roles WHERE id = $1 AND company_id = $2`, [b.roleId, ctx.user.companyId])
     if (!role) throw unprocessable('Perfil inválido.')
     if ((role.permissions as string[]).some((p) => p.startsWith('admin.')) && !can(ctx.user, 'admin.perfis')) throw forbidden('Você não pode atribuir um perfil administrativo.')
-    let u = await c.one(`SELECT id FROM users WHERE lower(email) = lower($1)`, [b.email])
+    let u = await c.one(`SELECT id, is_superadmin FROM users WHERE lower(email) = lower($1)`, [b.email])
     if (u) {
-      const linked = await c.one(`SELECT 1 FROM user_companies WHERE user_id = $1 AND company_id = $2`, [u.id, ctx.user.companyId])
-      if (linked) throw conflict('Usuário já vinculado a esta empresa.')
+      if (u.is_superadmin) throw unprocessable('Este e-mail não pode ser usado para um usuário da empresa. Use outro e-mail.')
+      const linked = await c.one(`SELECT invite_pending FROM user_companies WHERE user_id = $1 AND company_id = $2`, [u.id, ctx.user.companyId])
+      if (linked) throw conflict(linked.invite_pending ? 'Já existe um convite pendente para este e-mail.' : 'Usuário já vinculado a esta empresa.')
     } else {
       u = mode === 'email'
         ? await c.one(`INSERT INTO users(name, email, password_hash, must_change_password, pending_activation) VALUES ($1,$2,$3,false,true) RETURNING id`, [b.name, b.email, unusablePasswordHash()])
         : await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,$4) RETURNING id`, [b.name, b.email, hashPassword(temp), mode === 'senha'])
       u.created = true
     }
-    await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches, is_seller, commission_pct) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [u.id, ctx.user.companyId, b.roleId, b.allBranches, b.isSeller, b.commissionPct ?? null])
+    // conta que já existe (outra empresa): vínculo fica PENDENTE até a própria pessoa aceitar ao entrar no sistema
+    await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches, is_seller, commission_pct, active, invite_pending, invited_by, invited_at)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $8 THEN now() END)`,
+      [u.id, ctx.user.companyId, b.roleId, b.allBranches, b.isSeller, b.commissionPct ?? null, !!u.created, !u.created, u.created ? null : ctx.user.id])
     await saveBranches(c, ctx.user.companyId, u.id, b.allBranches, b.branchIds)
     await audit(c, ctx, 'usuario.criado', 'user', u.id, { name: b.name, email: b.email, roleId: b.roleId, acesso: u.created ? mode : 'conta_existente' }, 'warning')
     return { id: u.id as string, created: !!u.created }
   })
-  // conta que já existia (outra empresa): só vincula, a senha dela não muda
-  if (!res.created) return { id: res.id, linkedExisting: true }
+  // conta que já existia: convite pendente (a senha e o acesso dela não mudam até ela aceitar)
+  if (!res.created) { await notifyCompanyInvite(res.id, ctx); return { id: res.id, invitedExisting: true } }
   if (mode === 'email') return { id: res.id, ...(await inviteOrFallback(res.id, { companyId: ctx.user.companyId, createdBy: ctx.user.id, invitedBy: ctx.user.name })) }
   return { id: res.id, temporaryPassword: mode === 'senha' ? temp : undefined }
 })
@@ -159,13 +186,22 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
   return tx(async (c) => {
     const uc = await c.one(`SELECT * FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin) FOR UPDATE`, [ctx.params.id, ctx.user.companyId])
     if (!uc) throw notFound('Usuário')
+    if (uc.invite_pending && b.active === true) throw unprocessable('O acesso só é liberado quando a própria pessoa aceitar o convite.')
+    if (uc.invite_pending && b.active === false) {
+      await c.query(`DELETE FROM user_branches WHERE user_id = $1 AND company_id = $2`, [ctx.params.id, ctx.user.companyId])
+      await c.query(`DELETE FROM user_companies WHERE user_id = $1 AND company_id = $2 AND invite_pending`, [ctx.params.id, ctx.user.companyId])
+      await audit(c, ctx, 'usuario.convite_cancelado', 'user', ctx.params.id, null, 'warning')
+      return { ok: true, inviteCancelled: true }
+    }
+    if (b.name) { const cu = await companyUser(c, ctx, ctx.params.id).catch(() => null); if (!cu || cu.other_companies > 0) delete b.name } // nome da conta compartilhada é da própria pessoa
     if (ctx.params.id === ctx.user.id && (b.active === false || (b.roleId && b.roleId !== uc.role_id))) throw unprocessable('Você não pode desativar ou alterar o próprio perfil.')
     if (b.name) await c.query(`UPDATE users SET name = $2, updated_at = now() WHERE id = $1`, [ctx.params.id, b.name])
     if (b.roleId) { const r = await c.one(`SELECT 1 FROM roles WHERE id = $1 AND company_id = $2`, [b.roleId, ctx.user.companyId]); if (!r) throw unprocessable('Perfil inválido.') }
     await c.query(`UPDATE user_companies SET role_id = COALESCE($3, role_id), all_branches = COALESCE($4, all_branches), is_seller = COALESCE($5, is_seller),
                      commission_pct = CASE WHEN $7 THEN $6 ELSE commission_pct END, active = COALESCE($8, active) WHERE user_id = $1 AND company_id = $2`,
-      [ctx.params.id, ctx.user.companyId, b.roleId ?? null, b.allBranches ?? null, b.isSeller ?? null, b.commissionPct ?? null, 'commissionPct' in ctx.body, b.active ?? null])
-    if (b.allBranches !== undefined || b.branchIds) await saveBranches(c, ctx.user.companyId, ctx.params.id, b.allBranches ?? uc.all_branches, b.branchIds ?? [])
+      [ctx.params.id, ctx.user.companyId, b.roleId ?? null, 'allBranches' in ctx.body ? b.allBranches : null, 'isSeller' in ctx.body ? b.isSeller : null, b.commissionPct ?? null, 'commissionPct' in ctx.body, 'active' in ctx.body ? b.active : null])
+    // só mexe nas filiais quando elas foram enviadas (campos com valor padrão não podem apagar o que existe)
+    if ('allBranches' in ctx.body || 'branchIds' in ctx.body) await saveBranches(c, ctx.user.companyId, ctx.params.id, 'allBranches' in ctx.body ? b.allBranches : uc.all_branches, b.branchIds ?? [])
     if (b.active === false) await c.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND company_id = $2 AND revoked_at IS NULL`, [ctx.params.id, ctx.user.companyId])
     await audit(c, ctx, 'usuario.alterado', 'user', ctx.params.id, b, 'warning')
     return { ok: true }
@@ -173,8 +209,9 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
 })
 
 router.post('/api/admin/users/:id/reset-password', { perm: 'admin.usuarios' }, async (ctx) => {
-  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)`, [ctx.params.id, ctx.user.companyId])
-  if (!linked) throw notFound('Usuário')
+  rateLimit('reset-pwd:' + ctx.user.id, 20, 60 * 60_000)
+  const cu = await companyUser(db, ctx, ctx.params.id)
+  requireExclusive(ctx, cu, 'a redefinição de senha')
   const b = parse(v.object({ delivery: v.enum(['email', 'senha'] as const).optional() }), ctx.body || {})
   if (resolveDelivery(undefined, b.delivery) === 'email') {
     // link por e-mail: a senha atual continua valendo até a pessoa usar o link (o uso do link encerra as sessões)
@@ -192,9 +229,10 @@ router.post('/api/admin/users/:id/reset-password', { perm: 'admin.usuarios' }, a
 })
 
 router.post('/api/admin/users/:id/reset-mfa', { perm: 'admin.usuarios' }, async (ctx) => {
-  const linked = await db.one(`SELECT 1 FROM user_companies uc WHERE uc.user_id = $1 AND uc.company_id = $2 AND NOT EXISTS (SELECT 1 FROM users sx WHERE sx.id = uc.user_id AND sx.is_superadmin)`, [ctx.params.id, ctx.user.companyId])
-  if (!linked) throw notFound('Usuário')
-  await db.query(`UPDATE users SET mfa_enabled = false, mfa_secret = NULL WHERE id = $1`, [ctx.params.id])
+  const cu = await companyUser(db, ctx, ctx.params.id)
+  requireExclusive(ctx, cu, 'zerar a verificação em duas etapas')
+  await db.query(`UPDATE users SET mfa_enabled = false, mfa_secret = NULL, mfa_last_step = NULL WHERE id = $1`, [ctx.params.id])
+  await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [ctx.params.id])
   await audit(null, ctx, 'usuario.mfa_redefinido', 'user', ctx.params.id, null, 'critical')
   return { ok: true }
 })

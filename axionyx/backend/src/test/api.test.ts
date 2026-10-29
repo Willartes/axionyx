@@ -398,14 +398,17 @@ test('segmentos: moda mantém grade/coleções; hortifrúti nasce com peso, vali
   const cats = await db.query(`SELECT name FROM categories WHERE company_id = $1`, [coId])
   assert.ok(cats.rows.some((r: any) => r.name === 'Frutas'))
   assert.equal((await db.query(`SELECT count(*)::int AS n FROM sizes WHERE company_id = $1`, [coId])).rows[0].n, 0)
+  // o cliente não troca o segmento (define os módulos contratados): só a equipe da plataforma
+  assert.equal((await call('POST', `/api/admin/companies/${coId}/segment`, { token: H.token, body: { segment: 'adega' } })).status, 403)
+  await db.query(`UPDATE users SET is_superadmin = true, platform_owner = true WHERE email = 'admin.h@teste.local'`)
+  const P = await login('admin.h@teste.local', coId)
   // aplicar outro segmento só acrescenta (nada é removido)
-  const ap = await call('POST', `/api/admin/companies/${coId}/segment`, { token: H.token, body: { segment: 'adega' } })
+  const ap = await call('POST', `/api/admin/companies/${coId}/segment`, { token: P.token, body: { segment: 'adega' } })
   assert.equal(ap.status, 200, JSON.stringify(ap.body))
   assert.ok(ap.body.modules.includes('peso') && ap.body.modules.includes('maioridade'))
-  assert.equal((await call('POST', `/api/admin/companies/${coId}/segment`, { token: H.token, body: { segment: 'petshop' } })).status, 422) // inexistente
-  await call('POST', `/api/admin/companies/${coId}/segment`, { token: H.token, body: { segment: 'hortifruti' } })
-  const deny = await call('POST', `/api/admin/companies/${A.companyId}/segment`, { token: H.token, body: { segment: 'adega' } })
-  assert.equal(deny.status, 403)
+  assert.equal((await call('POST', `/api/admin/companies/${coId}/segment`, { token: P.token, body: { segment: 'petshop' } })).status, 422) // inexistente
+  await call('POST', `/api/admin/companies/${coId}/segment`, { token: P.token, body: { segment: 'hortifruti' } })
+  await db.query(`UPDATE users SET is_superadmin = false, platform_owner = false WHERE email = 'admin.h@teste.local'`)
 })
 
 test('hortifrúti: venda por peso, etiqueta de balança, lotes com validade (FEFO) e perdas', async () => {

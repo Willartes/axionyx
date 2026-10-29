@@ -100,7 +100,7 @@ const SALE_GROUPS: Record<string, { key: string; label: string; item: boolean; o
 router.get('/api/reports/sales', { perm: 'relatorios.ver' }, async (ctx) => {
   const q = ctx.query
   const { from, to } = period(q)
-  const g = SALE_GROUPS[q.group || 'dia']
+  const g = Object.hasOwn(SALE_GROUPS, q.group || 'dia') ? SALE_GROUPS[q.group || 'dia'] : undefined
   if (!g) throw unprocessable('Agrupamento inválido.')
   const branches = branchScope(ctx, q.branch || 'current')
   const params: unknown[] = [ctx.user.companyId, from, to, branches.length ? branches : null, q.seller || null, q.brand || null, q.collection || null, q.size || null, q.color || null, q.category || null, q.product || null]
@@ -162,7 +162,7 @@ router.get('/api/reports/stock', { perm: ['relatorios.ver', 'estoque.ver'] }, as
     categoria: [`COALESCE(ca.name,'Sem categoria')`, `COALESCE(ca.name,'Sem categoria')`], tamanho: [`COALESCE(sz.code,'-')`, `COALESCE(sz.code,'Sem tamanho')`], cor: [`COALESCE(co.name,'-')`, `COALESCE(co.name,'Sem cor')`],
     filial: ['br.id::text', 'br.name'],
   }
-  const g = groups[ctx.query.group || 'marca']
+  const g = Object.hasOwn(groups, ctx.query.group || 'marca') ? groups[ctx.query.group || 'marca'] : undefined
   if (!g) throw unprocessable('Agrupamento inválido.')
   const branches = branchScope(ctx, ctx.query.branch || 'all')
   const showCost = can(ctx.user, 'produtos.custo')

@@ -284,3 +284,16 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - **Trilha de navegação clicável** em todas as telas: cada nível (ex.: Cadastros › Clientes › Ficha do Cliente) leva à tela correspondente, e o ícone de casa volta à página inicial. Só vira link o que o usuário pode abrir (mesmas regras de permissão e módulos do menu). Ctrl/⌘+clique abre em nova aba.
 - **Celular**: o cabeçalho mostra início, "‹ nível anterior" (para voltar com um toque) e a tela atual; **lupa de pesquisa** sempre visível, abrindo a pesquisa em tela cheia com teclado de busca, botão Cancelar, itens maiores para o toque e **acesso rápido** aos favoritos e telas recentes.
 - Somente frontend e versão — nenhuma migração.
+
+### 1.10.2 — Correções da auditoria de segurança
+- **Contas entre empresas (crítico)**: cadastrar um e-mail que já tem conta no AXIONYX agora gera um **convite** — o acesso só vale depois que a própria pessoa aceita ao entrar (tela de escolha da empresa). A empresa só redefine senha, zera MFA ou altera o nome de contas **exclusivas** dela; conta usada em outras empresas aparece como "conta compartilhada" e a própria pessoa redefine pelo novo **"Esqueci minha senha"** (link por e-mail). O administrador pode cancelar convites pendentes.
+- **IP real** do visitante a partir do proxy confiável (`TRUST_PROXY_HOPS`, padrão 1 = Railway): cabeçalho forjado não engana mais os limites de tentativas nem a auditoria.
+- **Módulos e segmento** só pela equipe da plataforma (seguem o contrato); a tela Módulos fica somente leitura para o cliente.
+- **Login**: verificação de senha sem travar o servidor, mesma resposta para e-mail inexistente, senha errada ou conta bloqueada; limite por e-mail+IP; bloqueio da conta só após muitas falhas (alguém não consegue bloquear a conta de outra pessoa com poucas tentativas). Senha com scrypt reforçado (N=2^16), refeita automaticamente no próximo login.
+- **MFA**: o mesmo código não pode ser reutilizado; ativar MFA encerra as outras sessões; limites de tentativa em trocar senha, ativar e desativar MFA.
+- **Sessões**: administrador só encerra sessões de usuários da própria empresa.
+- **Dados sensíveis (LGPD)**: a equipe da plataforma não lê prontuário, documentos clínicos nem salários dos clientes.
+- **Webhooks**: e-commerce com segredo próprio por integração (botão "Segredo do webhook" em Integrações); Mercado Pago com limite de frequência e sem guardar conteúdo de notificações com assinatura inválida.
+- **Endurecimento**: cabeçalhos HSTS (produção), Permissions-Policy e CORP; `/api/health` público sem versão (versão em `/api/version`, autenticado); limites de tentativa com limpeza de memória; token de sessão só no `sessionStorage` ("Lembrar-me" guarda apenas o e-mail); arquivos estáticos e nomes de upload validados; conciliação filtrada por empresa; dependências de execução com versão fixa.
+- Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
+- Migração `017_seguranca.sql` só acrescenta colunas.

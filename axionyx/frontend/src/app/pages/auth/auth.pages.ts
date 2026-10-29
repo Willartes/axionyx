@@ -39,7 +39,7 @@ export class SplashPage implements OnInit {
     this.failed.set(false); this.pct.set(15); this.message.set('Verificando conexão com o servidor...');
     try {
       const h = await this.api.get<any>('/health');
-      this.pct.set(60); this.message.set(`Banco de dados conectado (${h.latencyMs} ms) · ${h.migrations} migrações aplicadas`);
+      this.pct.set(60); this.message.set(h?.ok ? 'Servidor conectado.' : 'Servidor respondeu.');
       await new Promise((r) => setTimeout(r, 450));
       this.pct.set(100); this.message.set('Pronto.');
       await new Promise((r) => setTimeout(r, 250));
@@ -96,7 +96,15 @@ export class SplashPage implements OnInit {
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" name="remember" [(ngModel)]="remember" style="accent-color:#0875D1" /><span style="font-size:13px;color:#647687">Lembrar-me</span></label>
           <a (click)="forgot.set(true)" style="font-size:13px;color:#0875D1;text-decoration:none;cursor:pointer">Esqueci minha senha</a>
         </div>
-        @if (forgot()) { <div class="state-info"><ax-icon name="info" [size]="14" />Peça ao administrador da sua empresa (Administração › Usuários): ele envia um link de redefinição para o seu e-mail ou gera uma senha temporária.</div> }
+        @if (forgot()) {
+          <div style="background:#F0F7FD;border:1px solid #CFE3F5;border-radius:8px;padding:12px">
+            @if (!resetSent()) {
+              <div style="font-size:13px;color:#172B3A;margin-bottom:8px">Informe o seu e-mail: se ele estiver cadastrado, enviaremos um link para você criar uma nova senha.</div>
+              <div style="display:flex;gap:6px"><input class="input-field" name="resetEmail" type="email" [(ngModel)]="resetEmail" placeholder="seu@email.com.br" autocomplete="username" />
+                <button type="button" class="btn-secondary" [disabled]="resetBusy() || !resetEmail" (click)="sendReset()">Enviar link</button></div>
+            } @else { <div style="font-size:13px;color:#145C36">{{ resetSent() }}</div> }
+          </div>
+        }
         <button type="submit" class="btn-primary" [disabled]="busy()" style="width:100%;justify-content:center;padding:10px 0;margin-top:8px">
           @if (busy()) { <span class="spinner" style="border-color:rgba(255,255,255,.4);border-top-color:white"></span> } Entrar no AXIONYX
         </button>
@@ -109,11 +117,20 @@ export class SplashPage implements OnInit {
   </div>`,
 })
 export class LoginPage {
-  private auth = inject(AuthService); private router = inject(Router);
+  readonly auth = inject(AuthService); private router = inject(Router);
   readonly features = ['Gestão financeira em tempo real', 'Varejo e serviços: PDV, agenda, estoque e crediário', 'Conformidade fiscal com provedor homologado', 'Analytics e Business Intelligence'];
   readonly showPass = signal(false); readonly busy = signal(false); readonly error = signal(''); readonly forgot = signal(false); readonly sso = signal(false);
   readonly expired = !!inject(ActivatedRoute).snapshot.queryParamMap.get('expirada');
-  email = ''; password = ''; remember = true;
+  email = this.auth.rememberedEmail(); password = ''; remember = true;
+  resetEmail = ''; readonly resetBusy = signal(false); readonly resetSent = signal('');
+  async sendReset() {
+    this.resetBusy.set(true);
+    try {
+      const r = await this.auth.requestPasswordReset(this.resetEmail.trim());
+      this.resetSent.set(r.emailEnabled ? 'Se o e-mail estiver cadastrado, você receberá o link em instantes (veja também a caixa de spam). O link vale por 48 horas.'
+        : 'O envio de e-mails ainda não está ativo. Peça ao administrador da sua empresa para redefinir sua senha.');
+    } catch (e: any) { this.error.set(e.message); } finally { this.resetBusy.set(false); }
+  }
   async submit() {
     if (!this.email || !this.password) { this.error.set('Informe e-mail e senha.'); return; }
     this.busy.set(true); this.error.set('');
@@ -194,6 +211,19 @@ export class MfaPage {
         <p style="color:#647687;font-size:14px">Você possui acesso a {{ companies().length }} empresa(s).</p>
       </div>
       @if (error()) { <div class="state-error">{{ error() }}</div> }
+      @if (auth.invitations().length) {
+        <div style="background:#FFF7E6;border:1px solid #F5D9A0;border-radius:10px;padding:12px 14px;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:600;color:#7A4E00;margin-bottom:6px;display:flex;gap:6px;align-items:center"><ax-icon name="mail" [size]="14" /> Convites para acessar outras empresas</div>
+          @for (i of auth.invitations(); track i.company_id) {
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid #F5E3BC;font-size:13px">
+              <span style="flex:1;min-width:180px"><b>{{ i.company }}</b> · perfil {{ i.role }}{{ i.invited_by ? ' · convidado por ' + i.invited_by : '' }}</span>
+              <button class="btn-ghost" style="font-size:12px;color:#C93636" (click)="answer(i, false)">Recusar</button>
+              <button class="btn-primary" style="font-size:12px" (click)="answer(i, true)">Aceitar</button>
+            </div>
+          }
+          <div style="font-size:11.5px;color:#8A6A2E;margin-top:4px">Só aceite convites de empresas que você reconhece. Recusar não altera nada na sua conta.</div>
+        </div>
+      }
       <div style="display:flex;flex-direction:column;gap:12px">
         @for (c of companies(); track c.id) {
           <div (click)="selected.set(c.id)" (dblclick)="selected.set(c.id); next()" [style.border]="'2px solid ' + (selected() === c.id ? '#0875D1' : '#DCE4EC')" [style.box-shadow]="selected() === c.id ? '0 0 0 3px rgba(8,117,209,0.12)' : 'none'"
@@ -207,7 +237,7 @@ export class MfaPage {
             </div>
             @if (selected() === c.id) { <ax-icon name="check-circle-2" [size]="20" color="#0875D1" /> }
           </div>
-        } @empty { <div class="empty-state">Seu usuário não está vinculado a nenhuma empresa. Contate o administrador.</div> }
+        } @empty { @if (!auth.invitations().length) { <div class="empty-state">Seu usuário não está vinculado a nenhuma empresa. Contate o administrador.</div> } }
       </div>
       <button class="btn-primary" (click)="next()" [disabled]="!selected()" [style.opacity]="selected() ? 1 : 0.5" style="width:100%;justify-content:center;padding:10px 0;margin-top:24px">Continuar <ax-icon name="chevron-right" [size]="16" /></button>
       <p style="text-align:center;margin-top:12px"><a style="font-size:12px;color:#647687;cursor:pointer" (click)="auth.logout()">Sair</a></p>
@@ -219,6 +249,10 @@ export class CompanySelectPage implements OnInit {
   readonly companies = this.auth.companies; readonly selected = signal<string | null>(null); readonly error = signal('');
   async ngOnInit() {
     try { const c = await this.auth.loadCompanies(); if (c.length === 1) this.selected.set(c[0].id); } catch (e: any) { this.error.set(e.message); }
+  }
+  async answer(i: any, accept: boolean) {
+    if (!accept && !confirm(`Recusar o convite de ${i.company}?`)) return;
+    try { await this.auth.answerInvitation(i.company_id, accept); if (accept) this.selected.set(i.company_id); } catch (e: any) { this.error.set(e.message); }
   }
   next() {
     const c = this.companies().find((x) => x.id === this.selected()); if (!c) return;

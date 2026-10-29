@@ -398,7 +398,7 @@ router.get('/api/reconciliation/:accountId', { perm: 'financeiro.conciliar' }, a
                                 WHERE l.account_id = $1 AND l.company_id = $2 AND l.date BETWEEN $3 AND $4 ORDER BY l.date DESC, l.id DESC`, [ctx.params.accountId, ctx.user.companyId, from, to])
   const pending = await db.many(`SELECT id, date, description, direction, amount FROM financial_transactions WHERE account_id = $1 AND company_id = $2 AND NOT reconciled AND date BETWEEN $3::date - 10 AND $4 ORDER BY date DESC`,
     [ctx.params.accountId, ctx.user.companyId, from, to])
-  const summary = await db.one(`SELECT COALESCE(sum(amount),0) AS statement_total, count(*) FILTER (WHERE matched_transaction_id IS NULL)::int AS unmatched FROM bank_statement_lines WHERE account_id = $1 AND date BETWEEN $2 AND $3`, [ctx.params.accountId, from, to])
+  const summary = await db.one(`SELECT COALESCE(sum(amount),0) AS statement_total, count(*) FILTER (WHERE matched_transaction_id IS NULL)::int AS unmatched FROM bank_statement_lines WHERE account_id = $1 AND company_id = $4 AND date BETWEEN $2 AND $3`, [ctx.params.accountId, from, to, ctx.user.companyId])
   return { lines, pending, summary }
 })
 

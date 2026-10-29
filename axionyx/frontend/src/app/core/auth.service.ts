@@ -42,7 +42,8 @@ export class AuthService {
 
   private restore() {
     try {
-      const raw = sessionStorage.getItem(KEY) || localStorage.getItem(KEY);
+      try { localStorage.removeItem(KEY); } catch { /* sessões antigas guardadas no navegador são descartadas */ }
+      const raw = sessionStorage.getItem(KEY);
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
   }
@@ -51,7 +52,8 @@ export class AuthService {
     this.session.set(v);
     try {
       sessionStorage.removeItem(KEY); localStorage.removeItem(KEY);
-      (remember && stage === 'full' ? localStorage : sessionStorage).setItem(KEY, JSON.stringify(v));
+      // o token de sessão nunca fica gravado de forma permanente no navegador; "Lembrar-me" guarda só o e-mail
+      sessionStorage.setItem(KEY, JSON.stringify(v));
     } catch { /* armazenamento indisponível: sessão só em memória */ }
   }
   clear() {
@@ -68,19 +70,30 @@ export class AuthService {
     return (Array.isArray(perm) ? perm : [perm]).some((x) => p.has(x));
   }
 
+  readonly invitations = signal<any[]>([]);
+  rememberedEmail(): string { try { return localStorage.getItem('axionyx.email') || ''; } catch { return ''; } }
   async login(email: string, password: string, remember: boolean): Promise<{ mfaRequired: boolean }> {
     const r = await this.api.post<any>('/auth/login', { email, password });
+    try { if (remember) localStorage.setItem('axionyx.email', email); else localStorage.removeItem('axionyx.email'); } catch { /* */ }
     this.persist(r.token, r.mfaRequired ? 'mfa' : 'context', remember);
     if (r.mfaRequired) { this.maskedEmail.set(r.maskedEmail || ''); return { mfaRequired: true }; }
-    this.pendingUser.set(r.user); this.companies.set(r.companies);
+    this.pendingUser.set(r.user); this.companies.set(r.companies); this.invitations.set(r.invitations ?? []);
     return { mfaRequired: false };
   }
   async verifyMfa(code: string) {
     const r = await this.api.post<any>('/auth/mfa', { code });
     this.persist(r.token, 'context', this.session()?.remember ?? false);
-    this.pendingUser.set(r.user); this.companies.set(r.companies);
+    this.pendingUser.set(r.user); this.companies.set(r.companies); this.invitations.set(r.invitations ?? []);
   }
-  async loadCompanies() { const c = await this.api.get<Me['companies']>('/auth/companies'); this.companies.set(c); return c; }
+  async loadCompanies() {
+    const [c, inv] = await Promise.all([this.api.get<Me['companies']>('/auth/companies'), this.api.get<any[]>('/auth/invitations').catch(() => [])]);
+    this.companies.set(c); this.invitations.set(inv); return c;
+  }
+  async answerInvitation(companyId: string, accept: boolean) {
+    const r = await this.api.post<any>(`/auth/invitations/${companyId}`, { accept });
+    this.companies.set(r.companies); this.invitations.set(r.invitations);
+  }
+  requestPasswordReset(email: string) { return this.api.post<{ ok: boolean; emailEnabled: boolean }>('/public/password-reset', { email }); }
   branchesOf(companyId: string) { return this.api.get<{ id: string; code: string; name: string; cnpj: string | null; address: any }[]>(`/auth/companies/${companyId}/branches`); }
   async enterContext(companyId: string, branchId: string) {
     const path = this.stage() === 'full' ? '/auth/switch' : '/auth/context';

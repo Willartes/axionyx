@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { router, audit, paged, Where, can, r2, Ctx } from '../core/http'
+import { rateLimit, router, audit, paged, Where, can, r2, Ctx } from '../core/http'
 import { db, tx, Q, nextNumber } from '../core/db'
 import { v, parse, onlyDigits } from '../core/validate'
 import { notFound, unprocessable, conflict, forbidden, unauthorized } from '../core/errors'
@@ -73,8 +73,24 @@ router.post('/api/integrations/:id/sync-products', { perm: 'integracoes.editar' 
  * Autenticado por assinatura HMAC-SHA256 do corpo (cabeçalho X-Signature) com ECOMMERCE_WEBHOOK_SECRET.
  * Idempotente pelo id externo do pedido.
  */
+/** Segredo do webhook de uma integração: HMAC(ECOMMERCE_WEBHOOK_SECRET, id da integração). Cada loja recebe o seu. */
+export function ecommerceWebhookSecret(integrationId: string): string | null {
+  const base = secret('ECOMMERCE_WEBHOOK_SECRET')
+  return base ? crypto.createHmac('sha256', base).update('ecommerce-webhook:' + integrationId.toLowerCase()).digest('hex') : null
+}
+router.get('/api/integrations/:id/webhook-secret', { perm: 'integracoes.editar' }, async (ctx) => {
+  const i = await db.one(`SELECT id FROM integrations WHERE id = $1 AND company_id = $2 AND kind = 'ecommerce'`, [ctx.params.id, ctx.user.companyId])
+  if (!i) throw notFound('Integração de e-commerce')
+  const key = ecommerceWebhookSecret(i.id)
+  if (!key) throw unprocessable('Segredo de webhook não configurado na plataforma (ECOMMERCE_WEBHOOK_SECRET).')
+  await audit(null, ctx, 'integracao.segredo_webhook_visto', 'integration', i.id, null, 'warning')
+  return { secret: key, url: `/api/webhooks/ecommerce/${i.id}` }
+})
 router.post('/api/webhooks/ecommerce/:integrationId', { auth: 'none' }, async (ctx) => {
-  const key = secret('ECOMMERCE_WEBHOOK_SECRET')
+  rateLimit('wh-ecom:' + ctx.ip, 120, 60_000)
+  if (!/^[0-9a-f-]{36}$/i.test(ctx.params.integrationId)) throw notFound('Integração ativa')
+  // segredo PRÓPRIO de cada integração (derivado do segredo da plataforma): a assinatura de uma loja não vale para outra empresa
+  const key = ecommerceWebhookSecret(ctx.params.integrationId)
   if (!key) throw unauthorized('Webhook de e-commerce não configurado.')
   const sig = String(ctx.req.headers['x-signature'] || '')
   const expected = crypto.createHmac('sha256', key).update(ctx.rawBody).digest('hex')

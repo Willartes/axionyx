@@ -12,8 +12,11 @@ const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
 
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) {
   const root = path.resolve(config.staticDir)
-  let file = path.join(root, decodeURIComponent((req.url || '/').split('?')[0]))
-  if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(root, 'index.html')
+  let rel = '/'
+  try { rel = decodeURIComponent((req.url || '/').split('?')[0]) } catch { /* endereço malformado: cai no index */ }
+  let file = path.join(root, rel)
+  // só arquivos DENTRO da pasta pública (comparação com separador evita pastas "irmãs" com o mesmo prefixo)
+  if ((file !== root && !file.startsWith(root + path.sep)) || rel.includes('\0') || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(root, 'index.html')
   if (!fs.existsSync(file)) { res.writeHead(404); res.end('Not found'); return }
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; frame-src blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
   res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': file.endsWith('index.html') ? 'no-cache' : 'public, max-age=86400' })

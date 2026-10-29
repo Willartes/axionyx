@@ -1,19 +1,38 @@
 import crypto from 'node:crypto'
 
 // ---------- Senhas (scrypt) ----------
-const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 64 }
+// N = 2^16 (64 MiB por cálculo). Hashes antigos (N menor) continuam válidos e são refeitos no próximo login.
+const SCRYPT = { N: 65536, r: 8, p: 1, keylen: 64 }
+const maxmem = (N: number, r: number) => 128 * N * r * 2 + 1024 * 1024
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16)
-  const hash = crypto.scryptSync(password, salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p })
+  const hash = crypto.scryptSync(password, salt, SCRYPT.keylen, { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p, maxmem: maxmem(SCRYPT.N, SCRYPT.r) })
   return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString('base64')}$${hash.toString('base64')}`
 }
-export function verifyPassword(password: string, stored: string): boolean {
-  const [alg, N, r, p, saltB64, hashB64] = stored.split('$')
-  if (alg !== 'scrypt') return false
-  const expected = Buffer.from(hashB64, 'base64')
-  const got = crypto.scryptSync(password, Buffer.from(saltB64, 'base64'), expected.length, { N: +N, r: +r, p: +p })
-  return got.length === expected.length && crypto.timingSafeEqual(got, expected)
+function parseHash(stored: string) {
+  const [alg, N, r, p, saltB64, hashB64] = String(stored || '').split('$')
+  if (alg !== 'scrypt' || !saltB64 || !hashB64) return null
+  const n = +N, rr = +r, pp = +p
+  if (!(n >= 1024 && n <= 1 << 20 && rr >= 1 && rr <= 32 && pp >= 1 && pp <= 4)) return null
+  return { N: n, r: rr, p: pp, salt: Buffer.from(saltB64, 'base64'), expected: Buffer.from(hashB64, 'base64') }
 }
+export function verifyPassword(password: string, stored: string): boolean {
+  const h = parseHash(stored); if (!h) return false
+  const got = crypto.scryptSync(password, h.salt, h.expected.length, { N: h.N, r: h.r, p: h.p, maxmem: maxmem(h.N, h.r) })
+  return got.length === h.expected.length && crypto.timingSafeEqual(got, h.expected)
+}
+/** Versão assíncrona (não trava o servidor enquanto calcula) — usada no login. */
+export function verifyPasswordAsync(password: string, stored: string): Promise<boolean> {
+  const h = parseHash(stored)
+  // sem hash válido: calcula mesmo assim (tempo constante, não revela se o e-mail existe)
+  const p = h ?? { N: SCRYPT.N, r: SCRYPT.r, p: SCRYPT.p, salt: DUMMY_SALT, expected: Buffer.alloc(SCRYPT.keylen) }
+  return new Promise((resolve) => crypto.scrypt(password, p.salt, p.expected.length, { N: p.N, r: p.r, p: p.p, maxmem: maxmem(p.N, p.r) }, (err, got) => {
+    resolve(!err && !!h && got.length === p.expected.length && crypto.timingSafeEqual(got, p.expected))
+  }))
+}
+const DUMMY_SALT = crypto.randomBytes(16)
+/** O hash usa parâmetros mais fracos que os atuais? (refazer após login bem-sucedido) */
+export function needsRehash(stored: string): boolean { const h = parseHash(stored); return !h || h.N < SCRYPT.N || h.r !== SCRYPT.r }
 export function passwordPolicy(pw: string): string | null {
   if (pw.length < 10) return 'A senha deve ter pelo menos 10 caracteres.'
   if (!/[a-z]/i.test(pw) || !/\d/.test(pw)) return 'A senha deve conter letras e números.'
@@ -75,14 +94,19 @@ export function totp(secret: string, time = Date.now(), step = 30, digits = 6): 
   const code = ((h.readUInt32BE(off) & 0x7fffffff) % 10 ** digits).toString()
   return code.padStart(digits, '0')
 }
-export function verifyTotp(secret: string, code: string, window = 1): boolean {
+export function verifyTotp(secret: string, code: string, window = 1): boolean { return totpStep(secret, code, window) !== null }
+/** Intervalo (passo de 30 s) do código aceito, ou null. Guardar o passo usado impede reutilizar o mesmo código. */
+export function totpStep(secret: string, code: string, window = 1, after: number | null = null): number | null {
   const c = (code || '').replace(/\D/g, '')
-  if (c.length !== 6) return false
+  if (c.length !== 6) return null
+  const now = Math.floor(Date.now() / 1000 / 30)
   for (let w = -window; w <= window; w++) {
-    const exp = totp(secret, Date.now() + w * 30_000)
-    if (crypto.timingSafeEqual(Buffer.from(exp), Buffer.from(c))) return true
+    const step = now + w
+    if (after !== null && step <= after) continue
+    const exp = totp(secret, step * 30_000)
+    if (crypto.timingSafeEqual(Buffer.from(exp), Buffer.from(c))) return step
   }
-  return false
+  return null
 }
 
 export const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex')

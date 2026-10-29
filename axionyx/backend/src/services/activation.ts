@@ -110,3 +110,20 @@ export async function inviteOrFallback(userId: string, opts: { companyId?: strin
   if (invite.sent) return { invite }
   return { invite, temporaryPassword: await fallbackTempPassword(userId) }
 }
+
+/** Avisa por e-mail (se configurado) que a pessoa foi convidada para mais uma empresa; o acesso só vale após o aceite no login. */
+export async function notifyCompanyInvite(userId: string, ctx: { user: { companyId: string; id: string; name: string } }) {
+  try {
+    const base = publicUrl()
+    if (!emailConfigured() || !base) return
+    const u = await db.one(`SELECT name, email FROM users WHERE id = $1`, [userId])
+    const co = await db.one(`SELECT COALESCE(trade_name, name) AS n FROM companies WHERE id = $1`, [ctx.user.companyId])
+    const first = esc(u.name.split(' ')[0])
+    const text = `Olá, ${u.name.split(' ')[0]}!\n\n${ctx.user.name} convidou você para acessar a empresa ${co.n} no AXIONYX.\n\nEntre com o seu e-mail e a sua senha de sempre em ${base}/login e aceite o convite na tela de escolha da empresa. Se não reconhece este convite, basta recusar: nada muda na sua conta.\n\nAXIONYX — e-mail automático, não responda.`
+    const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#172B3A;max-width:520px"><p>Olá, <b>${first}</b>!</p><p>${esc(ctx.user.name)} convidou você para acessar a empresa <b>${esc(co.n)}</b> no AXIONYX.</p><p>Entre com o seu e-mail e a sua senha de sempre em <a href="${esc(base)}/login">${esc(base)}/login</a> e aceite o convite na tela de escolha da empresa. Se não reconhece este convite, basta recusar: nada muda na sua conta.</p><p style="font-size:12px;color:#8696A7">AXIONYX — e-mail automático, não responda.</p></div>`
+    const r = await sendEmail({ to: u.email, toName: u.name, subject: `Convite para acessar ${co.n} no AXIONYX`, text, html })
+    await db.query(`INSERT INTO email_log(user_id, company_id, to_email, kind, provider, status, provider_id, created_by) VALUES ($1,$2,$3,'convite_empresa',$4,'enviado',$5,$6)`, [userId, ctx.user.companyId, u.email, r.provider, r.id ?? null, ctx.user.id])
+  } catch (e: any) {
+    await db.query(`INSERT INTO email_log(user_id, company_id, to_email, kind, status, error, created_by) SELECT $1,$2,email,'convite_empresa','erro',$3,$4 FROM users WHERE id = $1`, [userId, ctx.user.companyId, String(e?.message || e).slice(0, 300), ctx.user.id]).catch(() => {})
+  }
+}

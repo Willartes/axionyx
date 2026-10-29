@@ -48,6 +48,7 @@ const ago = (d: string | null) => { if (!d) return '—'; const m = Math.round((
             <div style="display:flex;gap:6px;margin-top:12px">
               @if (i.kind === 'whatsapp') { <button class="btn-primary" style="font-size:11px;flex:1;justify-content:center" (click)="router.navigateByUrl('/whatsapp')"><ax-icon name="settings" [size]="11" /> Configurar</button> }
               @if (i.kind === 'ecommerce') { <button class="btn-secondary" style="font-size:11px;flex:1;justify-content:center" [disabled]="i.status !== 'ativo'" (click)="sync(i)"><ax-icon name="refresh-cw" [size]="11" /> Sincronizar catálogo</button> }
+              @if (i.kind === 'ecommerce' && auth.can('integracoes.editar')) { <button class="btn-ghost" style="font-size:11px;flex:1;justify-content:center" (click)="whSecret(i)"><ax-icon name="key" [size]="11" /> Segredo do webhook</button> }
               @if (i.status === 'ativo') { <button class="btn-ghost" style="font-size:11px;flex:1;justify-content:center" (click)="setStatus(i, 'desativado')">Desativar</button> }
               @else if (i.kind !== 'whatsapp' || i.credentials_present) { <button class="btn-secondary" style="font-size:11px;flex:1;justify-content:center" [disabled]="!i.credentials_present" [title]="i.credentials_present ? '' : 'Configure as variáveis de ambiente no servidor'" (click)="setStatus(i, 'ativo')">Ativar</button> }
             </div>
@@ -78,6 +79,10 @@ export class IntegracoesPage implements OnInit {
   async load() { try { this.d.set(await this.api.get('/integrations')); } catch (e) { this.toast.error(e); } }
   loadOutbox() { this.outbox.query = { status: this.ob() || undefined }; this.outbox.load(1); }
   async setStatus(i: any, status: string) { try { await this.api.put('/integrations/' + i.id, { status }); this.toast.success('Integração atualizada.'); this.load(); } catch (e) { this.toast.error(e); } }
+  async whSecret(i: any) {
+    try { const r: any = await this.api.get(`/integrations/${i.id}/webhook-secret`); prompt('Segredo exclusivo desta loja para assinar o webhook (HMAC-SHA256, cabeçalho X-Signature). Endereço: ' + location.origin + r.url, r.secret); }
+    catch (e) { this.toast.error(e); }
+  }
   async sync(i: any) { try { const r: any = await this.api.post(`/integrations/${i.id}/sync-products`); this.toast.success(`${r.queued} produto(s) enfileirado(s).`); this.loadOutbox(); } catch (e) { this.toast.error(e); } }
   async retry(o: any) { try { const r: any = await this.api.post(`/integrations/outbox/${o.id}/retry`); this.toast.info(`Situação: ${r.status}.`); this.loadOutbox(); this.load(); } catch (e) { this.toast.error(e); } }
 }

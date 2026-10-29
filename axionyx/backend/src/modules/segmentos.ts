@@ -20,7 +20,8 @@ router.get('/api/company/segment', {}, async (ctx) => {
 
 /** Aplica (ou troca) o segmento de uma empresa. Só acrescenta módulos/categorias/parâmetros; nada é apagado. */
 router.post('/api/admin/companies/:id/segment', { perm: 'admin.empresas' }, async (ctx) => {
-  if (!ctx.user.isSuperadmin && ctx.params.id !== ctx.user.companyId) throw forbidden()
+  // segmento define os módulos contratados: só a equipe da plataforma aplica
+  if (!ctx.user.isSuperadmin || !(ctx.user.platformOwner || ctx.user.platformPerms.has('suporte.editar'))) throw forbidden('O segmento e os módulos seguem o contrato: peça a alteração ao suporte AXIONYX.')
   const b: any = parse(v.object({ segment: v.enum(Object.keys(SEGMENTS) as [SegmentId, ...SegmentId[]]) }), ctx.body)
   if (SEGMENTS[b.segment as SegmentId].status !== 'disponivel') throw unprocessable('Este segmento ainda está em preparação.')
   return tx(async (c) => {

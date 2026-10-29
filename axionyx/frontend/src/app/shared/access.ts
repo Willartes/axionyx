@@ -78,7 +78,7 @@ export function deliveryBody(d: AccessDelivery, password: string) {
         <div class="mono" style="font-size:20px;font-weight:700;text-align:center;background:#F4F7FA;padding:12px;border-radius:6px;user-select:all">{{ r().temporaryPassword }}</div>
         <div style="text-align:center;margin-top:6px"><button class="btn-ghost" style="font-size:12px" (click)="copy(r().temporaryPassword)"><ax-icon name="copy" [size]="12" /> Copiar</button></div>
       }
-      @if (r().linkedExisting) { <p style="font-size:13px">Esta pessoa já tinha conta no AXIONYX: ela foi vinculada a esta empresa e entra com a senha que já usa.</p> }
+      @if (r().invitedExisting || r().linkedExisting) { <p style="font-size:13px">Esta pessoa já tem conta no AXIONYX. Enviamos um <b>convite</b>: o acesso a esta empresa só é liberado quando ela entrar no sistema (com a senha que já usa) e aceitar. A senha dela não muda.</p> }
     }
     <div footer><button class="btn-secondary" (click)="close()">{{ r() ? 'Fechar' : 'Cancelar' }}</button></div>
   </ax-modal>`,

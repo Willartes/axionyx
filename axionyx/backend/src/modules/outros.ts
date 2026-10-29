@@ -75,8 +75,9 @@ router.get('/api/documents', { perm: 'documentos.ver' }, async (ctx) => {
   return { ...res, folders }
 })
 router.post('/api/documents', { perm: 'documentos.editar', maxBody: 15_000_000 }, async (ctx) => {
-  const name = decodeURIComponent(String(ctx.req.headers['x-file-name'] || '')).slice(0, 200)
-  const folder = decodeURIComponent(String(ctx.req.headers['x-folder'] || 'Geral')).slice(0, 80)
+  let name = '', folder = 'Geral'
+  try { name = decodeURIComponent(String(ctx.req.headers['x-file-name'] || '')).replace(/[\x00-\x1f]/g, '').slice(0, 200); folder = decodeURIComponent(String(ctx.req.headers['x-folder'] || 'Geral')).replace(/[\x00-\x1f]/g, '').slice(0, 80) }
+  catch { throw unprocessable('Nome do arquivo inválido.') }
   if (!name) throw unprocessable('Informe o nome do arquivo (cabeçalho X-File-Name).')
   if (!ctx.rawBody.length) throw unprocessable('Arquivo vazio.')
   const mime = String(ctx.req.headers['content-type'] || 'application/octet-stream').split(';')[0]

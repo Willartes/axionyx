@@ -1,6 +1,6 @@
 import { sendActivation, inviteOrFallback, unusablePasswordHash } from '../services/activation'
 import { resolveDelivery } from './admin'
-import { router, audit, paged, Where, Ctx, today, addMonths, r2 } from '../core/http'
+import { rateLimit, router, audit, paged, Where, Ctx, today, addMonths, r2 } from '../core/http'
 import { db, tx } from '../core/db'
 import { v, parse, onlyDigits, isValidCNPJ, isValidCPF } from '../core/validate'
 import { notFound, unprocessable, conflict, forbidden, HttpError } from '../core/errors'
@@ -257,7 +257,10 @@ router.post('/api/saas/contracts/:id/approve', SA, async (ctx) => {
         u = await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,true) RETURNING id`, [k.contact_name, k.contact_email, hashPassword(tempPassword)])
       }
     }
-    await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches) VALUES ($1,$2,$3,true) ON CONFLICT DO NOTHING`, [u!.id, r.company.id, r.roles['Administrador']])
+    // conta já existente (de outra empresa): vínculo como convite pendente, aceito pela própria pessoa no login
+    const existing = !invite && !tempPassword
+    await c.query(`INSERT INTO user_companies(user_id, company_id, role_id, all_branches, active, invite_pending, invited_by, invited_at) VALUES ($1,$2,$3,true,$4,$5,$6,CASE WHEN $5 THEN now() END) ON CONFLICT DO NOTHING`,
+      [u!.id, r.company.id, r.roles['Administrador'], !existing, existing, existing ? ctx.user.id : null])
     let kk = await c.one(`UPDATE saas_contracts SET company_id = $2, reviewed_by = $3, reviewed_at = now(), review_note = $4, updated_at = now() WHERE id = $1 RETURNING *`, [k.id, r.company.id, ctx.user.id, b.note ?? null])
     kk = await setStatus(c, kk, 'aguardando_pagamento', 'Proposta aprovada na auditoria', ctx.user.id, ctx.user.name)
     await autoResolve(c, k.id, ['novo_contrato'], `Aprovada por ${ctx.user.name}${b.note ? ': ' + b.note : ''}`)
@@ -492,13 +495,15 @@ router.post('/api/billing/me/charges/:id/checkout', {}, async (ctx) => {
 
 // =====================================================================  Webhook do Mercado Pago (público, assinado)
 router.post('/api/public/billing/mercadopago', { auth: 'none', maxBody: 100_000 }, async (ctx) => {
+  rateLimit('wh-mp:' + ctx.ip, 300, 60_000)
   const body = ctx.body || {}
   const topic = String(body.type || body.topic || ctx.query.type || ctx.query.topic || '') || null
   const dataId = String(ctx.query['data.id'] || ctx.query.id || body?.data?.id || '') || undefined
   const requestId = String(ctx.req.headers['x-request-id'] || '') || undefined
   const sig = verifyWebhookSignature(String(ctx.req.headers['x-signature'] || '') || undefined, requestId, dataId, Number(process.env.MP_WEBHOOK_MAX_AGE_SEC || 0))
   const ev = await db.one(`INSERT INTO saas_gateway_events(topic, action, resource_id, request_id, signature_ok, live_mode, payload, status, error) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, topic, resource_id`,
-    [topic, body.action ?? null, dataId ?? null, requestId ?? null, sig.ok, typeof body.live_mode === 'boolean' ? body.live_mode : null, JSON.stringify(body), sig.ok ? 'recebido' : 'ignorado', sig.ok ? null : sig.reason])
+    [String(topic ?? '').slice(0, 60) || null, String(body.action ?? '').slice(0, 60) || null, String(dataId ?? '').slice(0, 60) || null, String(requestId ?? '').slice(0, 100) || null, sig.ok,
+     typeof body.live_mode === 'boolean' ? body.live_mode : null, sig.ok ? JSON.stringify(body) : null, sig.ok ? 'recebido' : 'ignorado', sig.ok ? null : sig.reason]) // sem assinatura válida não guarda o conteúdo
   if (!sig.ok) { ctx.reply = { status: 401 }; return { ok: false, error: 'assinatura inválida' } }
   if (!dataId) { await db.query(`UPDATE saas_gateway_events SET status = 'ignorado', error = 'sem data.id' WHERE id = $1`, [ev.id]); ctx.reply = { status: 200 }; return { ok: true } }
   try { await processGatewayEvent(ev) } catch (e: any) {
