@@ -1,6 +1,7 @@
 import { pool } from '../core/db'
 import { migrate } from '../db/migrate'
 import { demo } from './mode'
+import { hashPassword } from '../core/crypto'
 import { seedDemoInstance, markDemoDatabase } from './seed'
 
 /**
@@ -48,4 +49,19 @@ export function scheduleDemoReset(base: string) {
     resetDemo(base).catch((e) => console.error('[demo] falha na restauração:', e.message))
   }, 5 * 60_000)
   t.unref()
+}
+
+/**
+ * Na subida do serviço: alinha a conta de demonstração com DEMO_LOGIN_EMAIL / DEMO_LOGIN_PASSWORD.
+ * - senha trocada na variável → passa a valer sem precisar restaurar;
+ * - e-mail trocado, conta ausente ou montagem incompleta (menos de 10 empresas) → pede uma nova montagem.
+ */
+export async function syncDemoAccount(): Promise<'ok' | 'rebuild' | 'missing'> {
+  if (!demo.email || demo.password.length < 10) return 'missing'
+  const u = (await pool.query(`SELECT id FROM users WHERE lower(email) = $1`, [demo.email])).rows[0]
+  const n = (await pool.query(`SELECT count(*)::int AS n FROM companies WHERE is_demo`)).rows[0].n
+  if (!u || n < 10) return 'rebuild'
+  await pool.query(`UPDATE users SET password_hash = $2, must_change_password = false, mfa_enabled = false, mfa_secret = NULL,
+    pending_activation = false, active = true, failed_attempts = 0, locked_until = NULL, updated_at = now() WHERE id = $1`, [u.id, hashPassword(demo.password)])
+  return 'ok'
 }

@@ -8,7 +8,7 @@ import { migrate } from './db/migrate'
 import './modules'
 import { startWorker, stopWorker } from './integrations/worker'
 import { demo, installDemoNetworkGuard, demoLinkUrl } from './demo/mode'
-import { demoDatabaseCheck, resetDemo, scheduleDemoReset } from './demo/reset'
+import { demoDatabaseCheck, resetDemo, scheduleDemoReset, syncDemoAccount } from './demo/reset'
 
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.xml': 'application/xml; charset=utf-8', '.webmanifest': 'application/manifest+json' }
 
@@ -70,7 +70,13 @@ if (require.main === module) {
       console.log(`[axionyx] API ouvindo em http://localhost:${config.port} (TZ=${config.timezone})${demo.enabled ? ' — AMBIENTE DE DEMONSTRAÇÃO' : ''}`)
       if (demo.enabled) {
         const base = `http://127.0.0.1:${config.port}`
-        if (demoEmpty) resetDemo(base).catch((e) => console.error('[demo] falha ao montar a demonstração:', e.message))
+        const montar = () => resetDemo(base).catch((e) => console.error('[demo] falha ao montar a demonstração:', e.message))
+        if (demoEmpty) montar()
+        else syncDemoAccount().then((r) => {
+          if (r === 'missing') console.error('[demo] defina DEMO_LOGIN_EMAIL e DEMO_LOGIN_PASSWORD (mínimo 10 caracteres) neste serviço')
+          else if (r === 'rebuild') { console.log('[demo] conta ou empresas ausentes: montando a demonstração de novo'); montar() }
+          else console.log('[demo] conta de demonstração conferida')
+        }).catch((e) => console.error('[demo] falha ao conferir a conta:', e.message))
         scheduleDemoReset(base)
       }
     })

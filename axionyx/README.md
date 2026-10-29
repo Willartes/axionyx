@@ -298,6 +298,10 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.11.2 — Conta de demonstração conferida na subida
+- Na subida, o serviço de demonstração alinha a conta com `DEMO_LOGIN_EMAIL` e `DEMO_LOGIN_PASSWORD`: a senha nova passa a valer, e um e-mail novo, a conta ausente ou uma montagem incompleta remontam a demonstração.
+- O log mostra claramente quando faltam as variáveis.
+
 ### 1.11.1 — Atalho para a demonstração sem subdomínio
 - `DEMO_URL` (no serviço de produção) aponta para o endereço `...up.railway.app` do serviço de demonstração.
 - `www.axionyxerp.com.br/demo` redireciona para a demonstração, e um link discreto ("·") fica no rodapé da página de apresentação.

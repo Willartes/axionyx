@@ -48,3 +48,12 @@ Não é preciso criar `demo.axionyxerp.com.br`:
 ## Uso
 - Em `https://demo.axionyxerp.com.br`, entre com a conta de demonstração e escolha a empresa do segmento do cliente.
 - Antes de cada apresentação, se quiser tudo "zerado", clique em **Restaurar demonstração**. Em 1 a 3 minutos, entre de novo.
+
+## Não consigo entrar na demonstração
+- As variáveis `DEMO_MODE`, `DEMO_LOGIN_EMAIL` e `DEMO_LOGIN_PASSWORD` precisam estar no serviço **axionyx-demo**. No serviço de produção elas não fazem nada; lá vai só `DEMO_URL`.
+- Entre pelo endereço da **demonstração** (`.../demo` ou `...up.railway.app`), não pela tela de login do site principal: a conta de demonstração só existe no banco da demonstração.
+- Confira o log do `axionyx-demo`:
+  - `[demo] conta de demonstração conferida`: a conta está ativa com o e-mail e a senha das variáveis;
+  - `[demo] ambiente montado`: a demonstração foi (re)montada;
+  - `defina DEMO_LOGIN_EMAIL e DEMO_LOGIN_PASSWORD`: faltam as variáveis, ou a senha tem menos de 10 caracteres.
+- Trocou a senha na variável? Ela passa a valer no próximo deploy. Trocou o e-mail? A demonstração é montada de novo com o e-mail novo (cerca de 1 a 3 minutos).

@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.11.1.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.11.2.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.11.1: atalho /demo para o ambiente de demonstracao"
+git commit -m "AXIONYX 1.11.2: conta de demonstracao conferida na subida"
 git push origin main
 ```
 
@@ -46,6 +46,8 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 **1.10.1**: só frontend (trilha de navegação clicável e pesquisa no celular) e número de versão — nenhuma migração, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba).
 
 **1.10.2**: nova migração `017_seguranca.sql` (aplicada sozinha). Só **acrescenta colunas** (convite pendente em `user_companies`, último passo do MFA em `users`); todos os vínculos atuais continuam ativos. Variável opcional `TRUST_PROXY_HOPS` (padrão 1, correto para o Railway; use 2 se ligar o proxy do Cloudflare). Recomendado: depois do deploy, gere os arquivos de travamento de versões com `npm install` dentro de `axionyx/backend` e `axionyx/frontend` e faça commit dos `package-lock.json`. Usuários com "Lembrar-me" precisarão entrar de novo uma vez.
+
+**1.11.2**: nenhuma migração nova. O serviço de demonstração confere a conta na subida: senha trocada na variável passa a valer, e e-mail novo ou montagem incompleta remonta a demonstração.
 
 **1.11.1**: nenhuma migração nova. Com `DEMO_URL` no serviço de produção, `www.axionyxerp.com.br/demo` e um link discreto no rodapé levam à demonstração, sem subdomínio (ver `docs/DEMONSTRACAO.md`).
 
