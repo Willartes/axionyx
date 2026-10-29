@@ -50,6 +50,7 @@ export function emailStatus() {
 export const emailConfigured = () => emailStatus().configured
 
 export async function sendEmail(m: EmailMessage): Promise<EmailResult> {
+  if ((process.env.DEMO_MODE || '').toLowerCase() === 'true' && !testTransport) throw new Error('Envio de e-mail desativado no ambiente de demonstração.')
   if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(m.to)) throw new Error('Destinatário inválido.')
   if (testTransport) return testTransport({ ...m, from: 'teste@axionyx.local', fromName: fromName() })
   const st = emailStatus()

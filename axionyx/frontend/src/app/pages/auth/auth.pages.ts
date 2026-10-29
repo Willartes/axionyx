@@ -74,6 +74,14 @@ export class SplashPage implements OnInit {
     <form class="login-form-panel" (ngSubmit)="submit()" style="width:460px;background:white;display:flex;flex-direction:column;justify-content:center;padding:48px 48px">
       <h2 style="font-size:22px;font-weight:700;color:#172B3A;margin-bottom:6px">Acesso ao sistema</h2>
       <p style="color:#647687;font-size:14px;margin-bottom:32px">Informe suas credenciais para continuar.</p>
+      @if (demoEnv(); as d) {
+        <div style="background:repeating-linear-gradient(45deg,#FFF4E0,#FFF4E0 10px,#FFF8EB 10px,#FFF8EB 20px);border:1px solid #F5E0B0;color:#8A5B00;border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:14px">
+          <div style="font-weight:700;display:flex;gap:6px;align-items:center"><ax-icon name="flask-conical" [size]="14" /> Ambiente de demonstração</div>
+          <div style="margin-top:2px">Empresas e dados fictícios, isolados dos clientes reais. Tudo volta ao original todo dia às {{ d.resetHour }}h.</div>
+          @if (d.resetting) { <div style="margin-top:6px;font-weight:600">A demonstração está sendo restaurada — aguarde 1 a 3 minutos.</div> }
+          @if (d.email) { <button type="button" class="btn-secondary" style="margin-top:8px;width:100%;justify-content:center" (click)="fillDemo(d)"><ax-icon name="play" [size]="13" /> Entrar na demonstração</button> }
+        </div>
+      }
       @if (expired) { <div class="state-warning" style="margin-bottom:16px"><ax-icon name="clock" [size]="14" />Sua sessão expirou. Entre novamente.</div> }
       @if (error()) { <div class="state-error" style="margin:0 0 16px" role="alert"><ax-icon name="alert-triangle" [size]="14" /><span>{{ error() }}</span></div> }
       <div style="display:flex;flex-direction:column;gap:16px">
@@ -116,11 +124,12 @@ export class SplashPage implements OnInit {
     </form>
   </div>`,
 })
-export class LoginPage {
+export class LoginPage implements OnInit {
   readonly auth = inject(AuthService); private router = inject(Router);
   readonly features = ['Gestão financeira em tempo real', 'Varejo e serviços: PDV, agenda, estoque e crediário', 'Conformidade fiscal com provedor homologado', 'Analytics e Business Intelligence'];
   readonly showPass = signal(false); readonly busy = signal(false); readonly error = signal(''); readonly forgot = signal(false); readonly sso = signal(false);
-  readonly expired = !!inject(ActivatedRoute).snapshot.queryParamMap.get('expirada');
+  private qp = inject(ActivatedRoute).snapshot.queryParamMap;
+  readonly expired = !!this.qp.get('expirada');
   email = this.auth.rememberedEmail(); password = ''; remember = true;
   resetEmail = ''; readonly resetBusy = signal(false); readonly resetSent = signal('');
   async sendReset() {
@@ -131,6 +140,17 @@ export class LoginPage {
         : 'O envio de e-mails ainda não está ativo. Peça ao administrador da sua empresa para redefinir sua senha.');
     } catch (e: any) { this.error.set(e.message); } finally { this.resetBusy.set(false); }
   }
+  readonly demoEnv = signal<any>(null);
+  private api0 = inject(Api);
+  ngOnInit() {
+    this.api0.get<any>('/public/demo').then((d) => {
+      if (!d?.demo) return;
+      this.demoEnv.set(d);
+      // vindo do link da página de apresentação (/demo): entra direto quando o acesso público está ligado
+      if (this.qp.get('entrar') && d.email && !d.resetting) this.fillDemo(d);
+    }).catch(() => {});
+  }
+  fillDemo(d: any) { this.email = d.email; this.password = d.password; this.remember = false; this.submit(); }
   async submit() {
     if (!this.email || !this.password) { this.error.set('Informe e-mail e senha.'); return; }
     this.busy.set(true); this.error.set('');

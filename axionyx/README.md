@@ -297,3 +297,14 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - **Endurecimento**: cabeçalhos HSTS (produção), Permissions-Policy e CORP; `/api/health` público sem versão (versão em `/api/version`, autenticado); limites de tentativa com limpeza de memória; token de sessão só no `sessionStorage` ("Lembrar-me" guarda apenas o e-mail); arquivos estáticos e nomes de upload validados; conciliação filtrada por empresa; dependências de execução com versão fixa.
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
+
+### 1.11.1 — Atalho para a demonstração sem subdomínio
+- `DEMO_URL` (no serviço de produção) aponta para o endereço `...up.railway.app` do serviço de demonstração.
+- `www.axionyxerp.com.br/demo` redireciona para a demonstração, e um link discreto ("·") fica no rodapé da página de apresentação.
+- Com `DEMO_PUBLIC_LOGIN=true` na demonstração, o visitante entra direto. Só aceita endereço https, e o redirecionamento usa apenas a origem configurada.
+
+### 1.11.0 — Ambiente de demonstração isolado
+- Novo **modo demonstração** (`DEMO_MODE=true`) para rodar num **serviço e banco separados** da produção: 10 empresas fictícias (uma por segmento) com histórico de vendas, financeiro, agenda, prontuário, convênio e OS, e uma **conta de demonstração** que acessa todas.
+- Isolamento: comunicação externa bloqueada (e-mail, WhatsApp, Mercado Pago, NF-e, integrações); conta de demonstração sem troca de senha, MFA, usuários, configurações, integrações ou exportação; o servidor se recusa a iniciar em banco com empresas reais.
+- Restauração automática diária e botão **Restaurar demonstração**; botão opcional **Entrar na demonstração** na tela de login (`DEMO_PUBLIC_LOGIN=true`).
+- Passo a passo em `docs/DEMONSTRACAO.md`. Nenhuma migração nova; produção não é afetada (sem `DEMO_MODE`, nada muda).

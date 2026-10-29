@@ -162,6 +162,7 @@ import { AuthService } from '../../core/auth.service';
     footer { background:#081726; color:#8EA3B8; padding:44px 0 28px; font-size:13.5px; }
     footer .wrap { display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; }
     footer a:hover { color:#fff; }
+    footer a.demo-hidden { color:inherit; text-decoration:none; padding:6px 10px; margin:-6px -10px; cursor:default; }
     .reveal { opacity:0; transform:translateY(18px); transition:opacity .6s ease, transform .6s ease; }
     .reveal.in { opacity:1; transform:none; }
     @media (max-width: 1080px) {
@@ -484,7 +485,7 @@ import { AuthService } from '../../core/auth.service';
         <div style="display:grid;gap:8px;align-content:start"><b style="color:#fff">Acesso</b><a routerLink="/app">Entrar no Axionyx</a><a href="#contato" (click)="go($event, 'contato')">Agendar demonstração</a></div>
       </div>
     </div>
-    <div class="wrap" style="margin-top:28px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px;font-size:12.5px">© {{ year }} AXIONYX · www.axionyxerp.com.br</div>
+    <div class="wrap" style="margin-top:28px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px;font-size:12.5px">© {{ year }} AXIONYX · www.axionyxerp.com.br@if (demoUrl()) { <a class="demo-hidden" href="/demo" title="Demonstração">·</a> }</div>
   </footer>`,
 })
 export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
@@ -605,8 +606,15 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   readonly contactBullets = ['Demonstração no seu segmento', 'Ferramentas de inteligência na prática', 'Proposta de implantação para a sua operação'];
   readonly segOptions = ['Moda e vestuário', 'Hortifrúti e quitanda', 'Adega e bebidas', 'Mercadinho e conveniência', 'Cosméticos e perfumaria', 'Odontologia', 'Clínica de estética', 'Salão de beleza', 'Outro varejo ou serviço'];
 
+  /** link discreto para o ambiente de demonstração (só aparece com DEMO_URL configurado na produção) */
+  readonly demoUrl = signal<string | null>(null);
   ngOnInit() {
     this.doc.title = 'AXIONYX — ERP com inteligência para o varejo vender mais';
+    // no ambiente de demonstração, a página inicial vai direto para o login
+    this.api.get<any>('/public/demo').then((d) => {
+      if (d?.demo) { this.router.navigateByUrl('/login'); return; }
+      if (d?.url) this.demoUrl.set(d.url);
+    }).catch(() => {});
   }
   ngAfterViewInit() {
     this.segMeasure();

@@ -4,6 +4,7 @@ import { db, Q } from './db'
 import { HttpError, forbidden, unauthorized, fromPg, badRequest, conflict, unprocessable } from './errors'
 import { verifyJwt, sha256 } from './crypto'
 import { PLATFORM_PATHS } from './platform'
+import { demo, isDemoAccount, demoBlocks } from '../demo/mode'
 
 export type Stage = 'mfa' | 'context' | 'full'
 
@@ -288,6 +289,9 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
   let status = 200
   let ctx: Ctx | null = null
   try {
+    // ambiente de demonstração sendo restaurado: só o próprio servidor (montando os dados) é atendido
+    if (demo.resetting && req.headers['x-demo-internal'] !== demo.internalToken && url.pathname !== '/api/health' && url.pathname !== '/api/public/demo')
+      throw new HttpError(503, 'demo_restaurando', 'A demonstração está sendo restaurada. Tente novamente em instantes.')
     const route = routes.find((r) => r.method === method && r.re.test(url.pathname))
     if (!route) {
       const exists = routes.some((r) => r.re.test(url.pathname))
@@ -308,6 +312,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse): Promise
     const authMode = route.opts.auth ?? 'full'
     if (authMode !== 'none') ctx.user = await authenticate(req, authMode)
     if (ctx.user?.mustChangePassword && !ctx.path.startsWith('/api/auth/')) throw new HttpError(403, 'troca_de_senha', 'Defina uma nova senha para continuar (senha temporária).')
+    if (ctx.user && isDemoAccount(ctx.user.email) && demoBlocks(method, ctx.path)) throw forbidden('Esta ação não está disponível na conta de demonstração.')
     if (ctx.user?.isSuperadmin && !ctx.user.platformOwner) supportGate(ctx)
     if (ctx.user?.billingStatus && !ctx.user.isSuperadmin) billingGate(ctx)
     if (route.opts.perm) requirePerm(ctx.user, route.opts.perm)

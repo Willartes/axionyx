@@ -1,6 +1,6 @@
 {
   "name": "axionyx-backend",
-  "version": "1.10.2",
+  "version": "1.11.1",
   "private": true,
   "description": "AXIONYX ERP — API REST (Node.js + TypeScript + PostgreSQL)",
   "main": "dist/server.js",

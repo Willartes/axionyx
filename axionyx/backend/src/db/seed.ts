@@ -39,7 +39,7 @@ const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return se
 const pick = <T,>(a: T[]): T => a[Math.floor(rnd() * a.length)]
 const between = (a: number, b: number) => Math.floor(a + rnd() * (b - a + 1))
 
-async function shiftSale(c: Q, saleId: string, days: number, hour: number) {
+export async function shiftSale(c: Q, saleId: string, days: number, hour: number) {
   const iv = `${days} days`
   await c.query(`UPDATE sales SET created_at = date_trunc('day', now()) - $2::interval + ($3 || ' hours')::interval WHERE id = $1`, [saleId, iv, String(hour)])
   await c.query(`UPDATE stock_movements SET created_at = created_at - $2::interval WHERE ref_type = 'sale' AND ref_id = $1`, [saleId, iv])
@@ -51,9 +51,10 @@ async function shiftSale(c: Q, saleId: string, days: number, hour: number) {
   await c.query(`UPDATE audit_log SET created_at = created_at - $2::interval WHERE entity = 'sale' AND entity_id = $1::text`, [saleId, iv])
 }
 
-async function seedDemo() {
-  const password = process.env.DEMO_PASSWORD || genPassword()
-  const adminEmail = process.env.DEMO_ADMIN_EMAIL || 'admin@demo.axionyx.local'
+export async function seedDemo(opts: { password?: string; adminEmail?: string; adminName?: string; quiet?: boolean } = {}) {
+  seed = 20261024
+  const password = opts.password || process.env.DEMO_PASSWORD || genPassword()
+  const adminEmail = opts.adminEmail || process.env.DEMO_ADMIN_EMAIL || 'admin@demo.axionyx.local'
   const t0 = Date.now()
   const ctxIds = await tx(async (c) => {
     if (await c.one(`SELECT 1 FROM companies WHERE is_demo AND name LIKE 'Moda Viva%'`)) throw new Error('A empresa de demonstração já existe.')
@@ -74,7 +75,7 @@ async function seedDemo() {
         [co, (opts.branches ?? [b1])[0], u.id, name, email, role === 'Vendedor' ? 'Consultora de Moda' : role, role === 'Vendedor' ? 'Vendas' : role === 'Financeiro' ? 'Financeiro' : 'Gestão', between(200, 1500), role === 'Vendedor' ? 1800 : role === 'Financeiro' ? 2600 : 3200])
       return u.id as string
     }
-    const admin = await mk('Admin Demonstração', adminEmail, 'Administrador', { all: true })
+    const admin = await mk(opts.adminName || 'Admin Demonstração', adminEmail, 'Administrador', { all: true })
     const gerente = await mk('Carla Gerente (demo)', 'gerente@demo.axionyx.local', 'Gerente de Loja', { all: true })
     const v1 = await mk('Júlia Vendedora (demo)', 'julia@demo.axionyx.local', 'Vendedor', { branches: [b1], seller: true, pct: 4 })
     const v2 = await mk('Rafael Vendedor (demo)', 'rafael@demo.axionyx.local', 'Vendedor', { branches: [b1], seller: true })
@@ -353,10 +354,12 @@ async function seedDemo() {
   await pool.query(`UPDATE cash_sessions cs SET status = 'fechado', closed_by = $2, closed_at = now(), expected_amount = x.s, declared_amount = x.s, difference = 0
                       FROM (SELECT session_id, sum(amount) AS s FROM cash_movements GROUP BY session_id) x WHERE x.session_id = cs.id AND cs.company_id = $1 AND cs.status = 'aberto'`, [co, admin])
   await pool.query(`UPDATE cash_sessions SET status = 'fechado', closed_at = now() WHERE company_id = $1 AND status = 'aberto'`, [co])
+  if (opts.quiet) return { companyId: co, adminId: admin }
   console.log(`\n✔ Empresa de DEMONSTRAÇÃO criada em ${Math.round((Date.now() - t0) / 1000)}s (${created} vendas fictícias).`)
   console.log(`  Todos os dados são fictícios e a empresa é marcada como demonstração no sistema.`)
   console.log(`  Usuários: ${adminEmail} (Administrador), gerente@, julia@, rafael@, bianca@, financeiro@demo.axionyx.local`)
   console.log(`  Senha de todos: ${process.env.DEMO_PASSWORD ? '(a definida em DEMO_PASSWORD)' : password}\n`)
+  return { companyId: co, adminId: admin }
 }
 
 if (require.main === module) {

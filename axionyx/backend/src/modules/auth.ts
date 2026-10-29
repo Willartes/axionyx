@@ -1,6 +1,7 @@
 import { segmentInfo } from '../services/segments'
 import { router, audit, rateLimit, Ctx, can, PLATFORM_BLOCKED } from '../core/http'
 import { ALL_PERMISSIONS } from '../core/permissions'
+import { demo, isDemoAccount } from '../demo/mode'
 import { db } from '../core/db'
 import { config } from '../config'
 import { v, parse } from '../core/validate'
@@ -177,6 +178,7 @@ router.get('/api/auth/me', {}, async (ctx) => {
     company, segment: segmentInfo(company?.segment), branch, branches, permissions: u.isSuperadmin ? ALL_PERMISSIONS.filter((p) => !PLATFORM_BLOCKED.has(p)) : [...u.permissions], settings,
     companies: await companiesFor(u.id, u.isSuperadmin),
     billing: u.billingStatus ? await billingSummary(u.companyId) : null,
+    demo: demo.enabled ? { environment: true, account: isDemoAccount(u.email), resetHour: demo.resetHour } : null,
     platform: u.isSuperadmin ? { owner: u.platformOwner, permissions: u.platformOwner ? PLATFORM_KEYS : [...u.platformPerms], title: user?.platform_title ?? null } : null,
   }
 })

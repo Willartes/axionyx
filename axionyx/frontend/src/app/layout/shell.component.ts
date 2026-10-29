@@ -197,7 +197,9 @@ const writeLs = (k: string, v: string[]) => { try { localStorage.setItem(k, JSON
         }
       }
       @if (me()?.company?.is_demo) {
-        <div class="demo-banner no-print"><ax-icon name="flask-conical" [size]="13" /> Empresa de demonstração — todos os dados desta empresa são fictícios e servem apenas para teste.</div>
+        <div class="demo-banner no-print"><ax-icon name="flask-conical" [size]="13" /> Empresa de demonstração — todos os dados desta empresa são fictícios e servem apenas para teste.
+          @if (me()?.demo?.account) { <span style="margin-left:auto;display:inline-flex;gap:8px;align-items:center">volta ao original todo dia às {{ me()?.demo?.resetHour }}h
+            <button class="btn-ghost" style="font-size:11.5px;padding:2px 8px;border:1px solid currentColor" (click)="resetDemo()"><ax-icon name="rotate-ccw" [size]="12" /> Restaurar demonstração</button></span> }</div>
       }
 
       <div class="app-content" style="flex:1;overflow:hidden;display:flex">
@@ -372,6 +374,10 @@ export class ShellComponent implements OnInit, OnDestroy {
   crumbGo(ev: MouseEvent, id: string) {
     if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return; // nova aba
     ev.preventDefault(); this.go(id);
+  }
+  async resetDemo() {
+    if (!confirm('Restaurar a demonstração ao estado original? Tudo o que foi feito durante a apresentação será desfeito e você precisará entrar de novo (leva de 1 a 3 minutos).')) return;
+    try { const r: any = await this.api.post('/demo/reset', {}); this.toast.success(r.message); setTimeout(() => this.auth.logout(), 1200); } catch (e) { this.toast.error(e); }
   }
   focusSearch() { setTimeout(() => document.getElementById('global-search-input')?.focus(), 10); }
   titleOf(id: string) { return (TITLES[id] ?? [id]).slice(-1)[0]; }
