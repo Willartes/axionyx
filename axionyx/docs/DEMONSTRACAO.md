@@ -36,14 +36,16 @@ Ele não compartilha nada com a produção: nem banco, nem usuários, nem integr
    - em Settings › Networking › **Custom Domain**, adicione `demo.axionyxerp.com.br`;
    - no Cloudflare › DNS, crie o **CNAME** `demo` e o **TXT** de verificação que o Railway mostrar, em modo **DNS only**.
 
-## Acesso pela página de apresentação (sem subdomínio)
-Não é preciso criar `demo.axionyxerp.com.br`:
-1. No serviço `axionyx-demo`, abra Settings › Networking › **Generate Domain**. O Railway cria um endereço `...up.railway.app` gratuito, que não conta no limite de domínios.
-2. No serviço de **produção**, crie a variável `DEMO_URL` com esse endereço (exemplo: `https://axionyx-demo-production.up.railway.app`).
-3. Pronto:
-   - **`www.axionyxerp.com.br/demo`** leva direto à demonstração. Esse atalho não aparece em nenhum menu, então você manda por WhatsApp ou e-mail só para quem quiser.
-   - No rodapé da página de apresentação, o **ponto "·" no canto direito da última linha do rodapé** é um link discreto para a demonstração.
-   - Com `DEMO_PUBLIC_LOGIN=true` no serviço de demonstração, o visitante entra direto, sem digitar a senha. Sem essa variável, ele cai na tela de login da demonstração.
+## Botão "Acessar a demonstração" na página de apresentação
+Com o subdomínio `demo.axionyxerp.com.br` (passo 5) já funcionando:
+1. No serviço de **produção**, crie a variável `DEMO_URL` = `https://demo.axionyxerp.com.br`.
+2. A página de apresentação passa a mostrar **"Acessar a demonstração"** em quatro lugares: no topo, no início da página, no menu do celular e no rodapé. O botão leva a `https://demo.axionyxerp.com.br`.
+3. Com `DEMO_PUBLIC_LOGIN=true` no serviço `axionyx-demo`, o visitante entra direto na escolha das 10 empresas, sem digitar a senha. Sem essa variável, ele vê a tela de login da demonstração.
+4. Também funciona o atalho `www.axionyxerp.com.br/demo`, bom para mandar por WhatsApp ou e-mail.
+
+Sem `DEMO_URL`, os botões não aparecem, e o site fica como antes.
+
+> O plano Hobby do Railway permite 2 domínios próprios por serviço. O `demo.axionyxerp.com.br` fica no serviço **axionyx-demo**, que tem a sua própria contagem.
 
 ## Uso
 - Em `https://demo.axionyxerp.com.br`, entre com a conta de demonstração e escolha a empresa do segmento do cliente.

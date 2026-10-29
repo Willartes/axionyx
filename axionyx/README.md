@@ -298,6 +298,10 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.11.3 — Botão "Acessar a demonstração"
+- Com `DEMO_URL` (ex.: `https://demo.axionyxerp.com.br`) no serviço de produção, a página de apresentação mostra "Acessar a demonstração" no topo, no início da página, no menu do celular e no rodapé.
+- O link discreto "·" foi substituído por esses botões. O atalho `/demo` continua funcionando.
+
 ### 1.11.2 — Conta de demonstração conferida na subida
 - Na subida, o serviço de demonstração alinha a conta com `DEMO_LOGIN_EMAIL` e `DEMO_LOGIN_PASSWORD`: a senha nova passa a valer, e um e-mail novo, a conta ausente ou uma montagem incompleta remontam a demonstração.
 - O log mostra claramente quando faltam as variáveis.

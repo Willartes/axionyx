@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, effect, OnInit, inject, signal, viewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, computed, effect, OnInit, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { DOCUMENT } from '@angular/common';
@@ -162,7 +162,6 @@ import { AuthService } from '../../core/auth.service';
     footer { background:#081726; color:#8EA3B8; padding:44px 0 28px; font-size:13.5px; }
     footer .wrap { display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; }
     footer a:hover { color:#fff; }
-    footer a.demo-hidden { color:inherit; text-decoration:none; padding:6px 10px; margin:-6px -10px; cursor:default; }
     .reveal { opacity:0; transform:translateY(18px); transition:opacity .6s ease, transform .6s ease; }
     .reveal.in { opacity:1; transform:none; }
     @media (max-width: 1080px) {
@@ -178,6 +177,7 @@ import { AuthService } from '../../core/auth.service';
       .drawer-nav a .ic { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; background:rgba(0,166,214,.12); color:#7FD3EE; flex:none; }
       .drawer-nav a .chev { margin-left:auto; color:#5D7A93; }
       .drawer-nav a.demo { margin-top:12px; justify-content:center; border:1px solid rgba(0,166,214,.55); background:rgba(0,166,214,.1); color:#fff; box-shadow:0 0 0 4px rgba(0,166,214,.06); }
+      .drawer-nav a.demo + a.demo { margin-top:8px; background:transparent; }
       .drawer-brand { margin-top:auto; padding:34px 0 22px; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
       .drawer-brand .name { display:flex; align-items:center; gap:12px; color:#fff; font-size:28px; font-weight:800; letter-spacing:.06em; }
       .drawer-brand small { color:#8EA9C1; font-size:13px; }
@@ -284,6 +284,7 @@ import { AuthService } from '../../core/auth.service';
       </nav>
       <div class="top-cta">
         <a class="btn btn-blue btn-sm" href="#contato" (click)="go($event, 'contato')">Agendar demonstração</a>
+        @if (demoHref(); as d) { <a class="app-link" [href]="d" title="Entrar na demonstração com dados fictícios"><ax-icon name="play" [size]="15" /> Demonstração</a> }
         <a class="app-link" routerLink="/app" title="Acessar o sistema AXIONYX"><ax-icon name="log-in" [size]="15" /> Entrar</a>
         <button class="burger" [class.on]="menu()" (click)="menu.set(!menu())" [attr.aria-expanded]="menu()" aria-controls="menu-mobile" [attr.aria-label]="menu() ? 'Fechar menu' : 'Abrir menu'"><ax-icon [name]="menu() ? 'x' : 'menu'" [size]="22" /></button>
       </div>
@@ -295,6 +296,7 @@ import { AuthService } from '../../core/auth.service';
         <a [href]="'#' + n.id" (click)="go($event, n.id)"><span class="ic"><ax-icon [name]="n.icon" [size]="18" /></span>{{ n.label }}<ax-icon class="chev" name="chevron-right" [size]="18" /></a>
       }
       <a class="demo" href="#contato" (click)="go($event, 'contato')"><ax-icon name="calendar-days" [size]="18" /> Agendar demonstração</a>
+      @if (demoHref(); as d) { <a class="demo" [href]="d"><ax-icon name="play" [size]="18" /> Acessar a demonstração</a> }
     </nav>
     <div class="drawer-brand">
       <div class="name"><ax-logo [size]="48" />AXIONYX</div>
@@ -312,7 +314,8 @@ import { AuthService } from '../../core/auth.service';
       <p class="lead">O AXIONYX une PDV, estoque, financeiro e fiscal a uma central de inteligência<span class="d-only"> que prevê a demanda, sugere a reposição, calcula o preço certo e aponta oportunidades de venda</span> — tudo com os dados reais da sua loja.</p>
       <div class="hero-ctas">
         <a class="btn btn-blue" href="#contato" (click)="go($event, 'contato')">Agendar demonstração <ax-icon name="arrow-right" [size]="17" /></a>
-        <a class="btn btn-ghost-light" href="#inteligencia" (click)="go($event, 'inteligencia')"><ax-icon name="brain" [size]="17" /> Ver a inteligência em ação</a>
+        @if (demoHref(); as d) { <a class="btn btn-ghost-light" [href]="d"><ax-icon name="play" [size]="17" /> Acessar a demonstração</a> }
+        @else { <a class="btn btn-ghost-light" href="#inteligencia" (click)="go($event, 'inteligencia')"><ax-icon name="brain" [size]="17" /> Ver a inteligência em ação</a> }
       </div>
       <div class="checks">
         @for (c of heroChecks; track c) { <span><ax-icon name="check-circle-2" [size]="16" color="#4FC3E8" /> {{ c }}</span> }
@@ -482,10 +485,10 @@ import { AuthService } from '../../core/auth.service';
         <div style="margin-top:10px;max-width:420px;line-height:1.6">ERP com inteligência comercial para o varejo: PDV, estoque, financeiro, fiscal e decisões guiadas por dados.</div></div>
       <div style="display:flex;gap:40px;flex-wrap:wrap">
         <div style="display:grid;gap:8px"><b style="color:#fff">Produto</b>@for (n of navItems; track n.id) { <a [href]="'#' + n.id" (click)="go($event, n.id)">{{ n.label }}</a> }</div>
-        <div style="display:grid;gap:8px;align-content:start"><b style="color:#fff">Acesso</b><a routerLink="/app">Entrar no Axionyx</a><a href="#contato" (click)="go($event, 'contato')">Agendar demonstração</a></div>
+        <div style="display:grid;gap:8px;align-content:start"><b style="color:#fff">Acesso</b><a routerLink="/app">Entrar no Axionyx</a><a href="#contato" (click)="go($event, 'contato')">Agendar demonstração</a>@if (demoHref(); as d) { <a [href]="d">Acessar a demonstração</a> }</div>
       </div>
     </div>
-    <div class="wrap" style="margin-top:28px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px;font-size:12.5px">© {{ year }} AXIONYX · www.axionyxerp.com.br@if (demoUrl()) { <a class="demo-hidden" href="/demo" title="Demonstração">·</a> }</div>
+    <div class="wrap" style="margin-top:28px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px;font-size:12.5px">© {{ year }} AXIONYX · www.axionyxerp.com.br</div>
   </footer>`,
 })
 export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
@@ -606,8 +609,9 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   readonly contactBullets = ['Demonstração no seu segmento', 'Ferramentas de inteligência na prática', 'Proposta de implantação para a sua operação'];
   readonly segOptions = ['Moda e vestuário', 'Hortifrúti e quitanda', 'Adega e bebidas', 'Mercadinho e conveniência', 'Cosméticos e perfumaria', 'Odontologia', 'Clínica de estética', 'Salão de beleza', 'Outro varejo ou serviço'];
 
-  /** link discreto para o ambiente de demonstração (só aparece com DEMO_URL configurado na produção) */
+  /** botões "Acessar a demonstração" (só aparecem com DEMO_URL configurado na produção, ex.: https://demo.axionyxerp.com.br) */
   readonly demoUrl = signal<string | null>(null);
+  readonly demoHref = computed(() => (this.demoUrl() ? this.demoUrl() + '/login?entrar=1' : null));
   ngOnInit() {
     this.doc.title = 'AXIONYX — ERP com inteligência para o varejo vender mais';
     // no ambiente de demonstração, a página inicial vai direto para o login
