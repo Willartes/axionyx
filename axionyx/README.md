@@ -298,6 +298,15 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.12.0 — Pré-diagnóstico do lucro (AXIA)
+- Pergunte à AXIA "Por que meu lucro caiu?" (ou "por que minha margem diminuiu este mês?", "por que as vendas caíram na semana?"). A resposta é um pré-diagnóstico com os seus dados.
+- O motor compara o DRE gerencial de dois períodos e decompõe a variação do resultado em causas que **somam exatamente** a diferença: movimento (nº de vendas), ticket médio, margem, devoluções, cada grupo de despesas e o resultado financeiro.
+- Cada causa traz evidências: custo dos mesmos produtos em alta, preço efetivo em queda, desconto médio, produtos que mais perderam contribuição, filial que mais recuou, clientes que não voltaram e categorias de despesa que subiram.
+- Também aponta "por onde começar", sinais fora do DRE (cancelamentos, taxas de cartão, comissões) e o nível de confiança (produtos sem custo, poucas vendas, despesas não lançadas).
+- Nova tela **Intelligence › Diagnóstico do Lucro**, com períodos (7 dias, 30 dias, este mês, mês passado, 90 dias) e visão de faturamento.
+- Quem não tem acesso ao financeiro vê só o diagnóstico do faturamento, sem lucro nem margem. Custos por produto aparecem só para quem pode ver custos.
+- Sem IA generativa e sem envio de dados para fora: regras e estatística sobre o banco da empresa.
+
 ### 1.11.3 — Botão "Acessar a demonstração"
 - Com `DEMO_URL` (ex.: `https://demo.axionyxerp.com.br`) no serviço de produção, a página de apresentação mostra "Acessar a demonstração" no topo, no início da página, no menu do celular e no rodapé.
 - O link discreto "·" foi substituído por esses botões. O atalho `/demo` continua funcionando.

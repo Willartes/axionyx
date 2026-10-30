@@ -4,6 +4,7 @@ import { crud } from '../core/crud'
 import { v, parse } from '../core/validate'
 import { notFound, unprocessable, forbidden } from '../core/errors'
 import { BALANCE_SQL } from '../services/finance'
+import { profitDiagnosis, diagnosisText, periodFromQuestion, type PeriodKey } from '../services/diagnosis'
 
 // ---------- CRM ----------
 crud({ table: 'opportunities', path: '/api/opportunities', entity: 'oportunidade', label: 'Oportunidade', view: 'crm.ver', edit: 'crm.editar', order: 't.updated_at DESC',
@@ -182,13 +183,35 @@ router.get('/api/intelligence/baseline', { perm: 'dashboard.ver' }, async (ctx) 
   return { revenueMonth: r2(Number(b.revenue_month)), costMonth: can(ctx.user, 'produtos.custo') ? r2(Number(b.cost_month)) : null, ticket: r2(Number(b.ticket)), salesMonth: r2(Number(b.sales_month)), discountPct: r2(Number(b.discount_pct)), expensesMonth: r2(Number(exp.v)) }
 })
 
+/** Pré-diagnóstico do lucro (ou do faturamento): causas que somam a variação entre dois períodos, com evidências. */
+const PERIODS: PeriodKey[] = ['7d', '30d', '90d', 'mes', 'mes_anterior']
+router.get('/api/intelligence/profit-diagnosis', { perm: ['financeiro.ver', 'contabilidade.ver', 'vendas.ver', 'relatorios.ver'] }, async (ctx) => {
+  const period = (PERIODS as string[]).includes(ctx.query.period) ? ctx.query.period as PeriodKey : '30d'
+  const canProfit = can(ctx.user, 'financeiro.ver') || can(ctx.user, 'contabilidade.ver')
+  const focus = ctx.query.focus === 'vendas' || !canProfit ? 'vendas' : 'lucro'
+  return profitDiagnosis(ctx.user.companyId, period, { focus, showCosts: can(ctx.user, 'produtos.custo') })
+})
+
 // ---------- AXIA: assistente por regras (consultas reais; LLM pendente de configuração) ----------
 router.post('/api/assistant/ask', {}, async (ctx) => {
   const b = parse(v.object({ question: v.string({ min: 2, max: 500 }) }), ctx.body)
   const q = b.question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const id = ctx.user.companyId
   const brl = (n: number) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const answer = async (): Promise<{ text: string; link?: string; data?: any }> => {
+  const answer = async (): Promise<{ text: string; link?: string; data?: any; actions?: any[] }> => {
+    // pré-diagnóstico: "por que meu lucro caiu?", "minha margem diminuiu", "por que as vendas caíram este mês?"
+    const why = /(por ?que|porque|motivo|caus|explic|diagnost|o que aconteceu|o que houve|caiu|cair|caindo|queda|diminu|baix|pior|menor|recu)/.test(q)
+    const profitQ = /(lucr|margem|resultado|prejuiz|rentab|ganhando menos|sobrando menos)/.test(q)
+    const salesQ = /(vend|fatur|receita)/.test(q)
+    if (why && (profitQ || salesQ)) {
+      const canProfit = can(ctx.user, 'financeiro.ver') || can(ctx.user, 'contabilidade.ver')
+      const canSales = can(ctx.user, 'vendas.ver') || can(ctx.user, 'relatorios.ver')
+      if (profitQ && !canProfit) return { text: 'Para analisar o lucro é preciso ter acesso ao financeiro ou à contabilidade. Peça ao administrador da empresa.' }
+      if (!profitQ && !canSales && !canProfit) return { text: 'Para analisar as vendas é preciso ter acesso às vendas ou aos relatórios. Peça ao administrador da empresa.' }
+      const period = periodFromQuestion(q)
+      const d = await profitDiagnosis(id, period, { focus: profitQ ? 'lucro' : 'vendas', showCosts: can(ctx.user, 'produtos.custo') })
+      return { text: diagnosisText(d), link: `diagnostico-lucro?periodo=${period}${profitQ ? '' : '&foco=vendas'}`, data: d, actions: d.actions.filter((a) => a.link).slice(0, 3) }
+    }
     if (/(vend|fatur)/.test(q) && /hoje/.test(q) && can(ctx.user, 'vendas.ver')) {
       const r = await db.one(`SELECT count(*)::int AS n, COALESCE(sum(total),0) AS t FROM sales WHERE company_id = $1 AND branch_id = $2 AND type = 'venda' AND status <> 'cancelada' AND created_at >= current_date`, [id, ctx.user.branchId])
       return { text: `Hoje, nesta filial: ${r.n} venda(s), total de ${brl(r.t)}${r.n ? ` (ticket médio ${brl(r.t / r.n)})` : ''}.`, link: 'pedidos' }
@@ -224,7 +247,7 @@ router.post('/api/assistant/ask', {}, async (ctx) => {
       const items = await insights(id, { finance: can(ctx.user, 'financeiro.ver') })
       return { text: items.length ? items.map((i) => `• ${i.text}`).join('\n') : 'Nenhum alerta relevante no momento.', link: 'ia-insights' }
     }
-    return { text: 'Posso responder sobre: vendas de hoje ou do mês, estoque abaixo do mínimo, títulos vencidos, condicionais em aberto, aniversariantes, produtos mais vendidos e um resumo de alertas. (Assistente baseado em regras — integração com modelo de linguagem pendente de configuração.)' }
+    return { text: 'Posso responder sobre: por que o lucro ou as vendas caíram (pré-diagnóstico), vendas de hoje ou do mês, estoque abaixo do mínimo, títulos vencidos, condicionais em aberto, aniversariantes, produtos mais vendidos e um resumo de alertas. (Assistente baseado em regras — integração com modelo de linguagem pendente de configuração.)' }
   }
   const r = await answer()
   return { ...r, engine: 'regras', at: new Date().toISOString() }

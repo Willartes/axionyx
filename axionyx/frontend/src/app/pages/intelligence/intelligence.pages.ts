@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { IconComponent } from '../../shared/icon.component';
 import { ModalComponent, StateComponent } from '../../shared/ui';
 import { CHARTS, Series } from '../../shared/charts';
@@ -65,7 +65,7 @@ export class InsightsListComponent implements OnInit {
     <div><div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><div style="width:36px;height:36px;background:linear-gradient(135deg,#0875D1,#00A6D6);border-radius:9px;display:flex;align-items:center;justify-content:center"><ax-icon name="brain" [size]="20" color="white" /></div>
       <h1 style="font-size:22px;font-weight:800;color:#172B3A;letter-spacing:-0.5px">AXIONYX Intelligence Center</h1></div>
       <p style="font-size:13px;color:#647687;padding-left:46px">Estatística e regras de negócio sobre os dados reais da empresa · sem modelos externos · atualizado em {{ now }}</p></div>
-    <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));gap:12px">
       @for (m of modules; track m.label) {
         <div class="card" style="padding:16px;cursor:pointer" (click)="router.navigateByUrl(m.screen)" (mouseenter)="$any($event.currentTarget).style.boxShadow='0 4px 12px rgba(0,0,0,0.08)'" (mouseleave)="$any($event.currentTarget).style.boxShadow='none'">
           <div [style.background]="m.bg" style="width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:10px"><ax-icon [name]="m.icon" [size]="20" [color]="m.color" /></div>
@@ -80,6 +80,7 @@ export class IntelligencePage {
   readonly router = inject(Router);
   readonly now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   readonly modules = [
+    { label: 'Diagnóstico do Lucro', icon: 'activity', color: '#C93636', bg: '#FDECEC', screen: '/diagnostico-lucro', sub: 'Por que o resultado mudou' },
     { label: 'Previsão de Demanda', icon: 'trending-up', color: '#0875D1', bg: '#E3EFF9', screen: '/forecast', sub: '5 métodos comparados por backtest' },
     { label: 'Estoque Inteligente', icon: 'flask-conical', color: '#18864B', bg: '#E8F5EE', screen: '/estoque-inteligente', sub: 'Reposição por ritmo de vendas' },
     { label: 'Pesquisa Operacional', icon: 'git-branch', color: '#D99000', bg: '#FFF4E0', screen: '/pesquisa-operacional', sub: 'Mix de compra ótimo por orçamento' },
@@ -369,4 +370,157 @@ export class SimulacoesPage implements OnInit {
     return [['Receita', brl(revenue), false], ['Margem bruta', gross === null ? '—' : ((gross / revenue) * 100).toFixed(1).replace('.', ',') + '%', false], ['Despesas', brl(expenses + losses), false],
       ['Lucro operacional', profit === null ? '—' : brl(profit), true], ['Ticket médio', brl(b.ticket * (1 + v.preco / 100)), false]];
   }
+}
+
+// ─── Diagnóstico do lucro (causas que somam a variação entre dois períodos) ─
+const DIAG_PERIODS = [{ k: '7d', l: '7 dias' }, { k: '30d', l: '30 dias' }, { k: 'mes', l: 'Este mês' }, { k: 'mes_anterior', l: 'Mês passado' }, { k: '90d', l: '90 dias' }];
+@Component({
+  selector: 'ax-diagnostico-lucro',
+  imports: [IconComponent, StateComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    .dg-wrap { padding:24px; display:flex; flex-direction:column; gap:16px; max-width:1100px; }
+    .dg-seg { display:inline-flex; border:1px solid #DCE4EC; border-radius:8px; overflow:hidden; background:white; flex-wrap:wrap; }
+    .dg-seg button { border:0; background:transparent; padding:7px 12px; font-size:12px; color:#3A4D5E; cursor:pointer; font-weight:500; }
+    .dg-seg button.on { background:#0875D1; color:white; }
+    .dg-head { display:grid; grid-template-columns: 1.3fr 1fr; gap:16px; }
+    .dg-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+    .dg-row { display:grid; grid-template-columns: minmax(0, 1.2fr) minmax(120px, 1fr) 120px; gap:14px; align-items:center; padding:12px 16px; border-top:1px solid #F0F4F8; }
+    .dg-row:first-child { border-top:0; }
+    .dg-bar { height:12px; border-radius:6px; }
+    .dg-ev { grid-column: 1 / -1; margin:-4px 0 0; padding:0 0 2px 0; display:flex; flex-direction:column; gap:3px; }
+    .dg-ev div { font-size:12px; color:#4A5D6E; line-height:1.45; padding-left:14px; position:relative; }
+    .dg-ev div::before { content:''; position:absolute; left:3px; top:7px; width:5px; height:5px; border-radius:50%; background:#A0AFBF; }
+    @media (max-width: 860px) {
+      .dg-wrap { padding:16px; } .dg-head { grid-template-columns: 1fr; } .dg-kpis { grid-template-columns:repeat(2, 1fr); }
+      .dg-row { grid-template-columns: minmax(0, 1fr) 96px; } .dg-row .dg-barcell { grid-column: 1 / -1; order:3; } .dg-ev { order:4; }
+    }
+  `],
+  template: `
+  <div class="dg-wrap">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;background:linear-gradient(135deg,#0875D1,#00A6D6);border-radius:9px;display:flex;align-items:center;justify-content:center"><ax-icon name="activity" [size]="18" color="white" /></div>
+        <h1 style="font-size:20px;font-weight:700;color:#172B3A">{{ focus() === 'lucro' ? 'Diagnóstico do lucro' : 'Diagnóstico do faturamento' }}</h1></div>
+        <p style="font-size:13px;color:#647687;margin-top:4px">O que fez o {{ focus() === 'lucro' ? 'resultado' : 'faturamento' }} mudar entre dois períodos, com as causas e as evidências tiradas dos seus dados.</p></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        @if (canProfit) { <div class="dg-seg" role="group" aria-label="Analisar"><button [class.on]="focus() === 'lucro'" (click)="setFocus('lucro')">Lucro</button><button [class.on]="focus() === 'vendas'" (click)="setFocus('vendas')">Faturamento</button></div> }
+        <div class="dg-seg" role="group" aria-label="Período">@for (p of periods; track p.k) { <button [class.on]="period() === p.k" (click)="setPeriod(p.k)">{{ p.l }}</button> }</div>
+      </div>
+    </div>
+    <ax-state [loading]="loading()" [error]="error()" />
+    @if (!loading() && d(); as d) {
+      <div class="dg-head">
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:11px;font-weight:600;color:#647687;text-transform:uppercase;letter-spacing:.04em">{{ d.headline.metric }} · {{ d.periods.label }}</div>
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:8px">
+            <span class="mono" style="font-size:28px;font-weight:800" [style.color]="d.headline.current < 0 ? '#C93636' : '#172B3A'">{{ brl(d.headline.current) }}</span>
+            <span class="mono" style="font-size:15px;font-weight:700" [style.color]="color(d.headline.delta)">{{ signed(d.headline.delta) }}@if (pctLabel(d)) { <span style="font-weight:600"> · {{ pctLabel(d) }}</span> }</span>
+          </div>
+          <div style="font-size:12px;color:#647687;margin-top:4px">{{ d.periods.currentLabel }} · antes: <span class="mono">{{ brl(d.headline.previous) }}</span> ({{ d.periods.previousLabel }})</div>
+          <div style="margin-top:12px;font-size:13px;color:#172B3A;line-height:1.5">{{ summary(d) }}</div>
+        </div>
+        <div class="card" style="padding:18px 20px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;color:#647687">Confiança do pré-diagnóstico</span>
+            <span class="badge" [class]="d.confidence.level === 'alta' ? 'badge badge-success' : d.confidence.level === 'media' ? 'badge badge-warning' : 'badge badge-danger'">{{ d.confidence.level === 'media' ? 'Média' : d.confidence.level === 'alta' ? 'Alta' : 'Baixa' }}</span></div>
+          @if (d.confidence.reasons.length) { @for (r of d.confidence.reasons; track r) { <div style="font-size:12px;color:#4A5D6E;line-height:1.45">• {{ r }}</div> } }
+          @else { <div style="font-size:12px;color:#4A5D6E">{{ d.focus === 'lucro' ? 'Há vendas, custos e despesas suficientes nos dois períodos para comparar.' : 'Há vendas suficientes nos dois períodos para comparar.' }}</div> }
+          <div style="font-size:11px;color:#8496A7;margin-top:auto;line-height:1.45">{{ d.method }}</div>
+        </div>
+      </div>
+
+      <div class="dg-kpis">
+        @for (k of kpis(d); track k.label) {
+          <div class="kpi-card"><div style="font-size:10px;font-weight:600;color:#647687;text-transform:uppercase;letter-spacing:.04em">{{ k.label }}</div>
+            <div class="mono" style="font-size:17px;font-weight:700;color:#172B3A;margin-top:4px">{{ k.cur }}</div>
+            <div style="font-size:11px;margin-top:2px" [style.color]="k.good === null ? '#647687' : k.good ? '#18864B' : '#C93636'">antes {{ k.prev }}</div></div>
+        }
+      </div>
+
+      <div class="card" style="overflow:hidden">
+        <div style="padding:12px 16px;border-bottom:1px solid #F0F4F8;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700;color:#172B3A">De {{ brl(d.headline.previous) }} para {{ brl(d.headline.current) }}: o que explica a diferença</span>
+          <span style="font-size:11px;color:#647687">as causas somam exatamente {{ signed(d.headline.delta) }}</span>
+        </div>
+        @for (x of main(d); track x.key) {
+          <div class="dg-row">
+            <div style="min-width:0"><div style="font-size:13px;font-weight:600;color:#172B3A">{{ x.label }}</div><div style="font-size:12px;color:#647687">{{ x.detail }}</div></div>
+            <div class="dg-barcell" style="display:flex" [style.justify-content]="x.impact < 0 ? 'flex-end' : 'flex-start'" [style.padding-left]="x.impact >= 0 ? '50%' : '0'" [style.padding-right]="x.impact < 0 ? '50%' : '0'">
+              <div class="dg-bar" [style.width.%]="barW(d, x.impact)" [style.background]="x.impact < 0 ? '#E06666' : '#3FAE6A'"></div>
+            </div>
+            <div style="text-align:right"><div class="mono" style="font-size:14px;font-weight:700" [style.color]="color(x.impact)">{{ signed(x.impact) }}</div>
+              @if (x.link) { <a class="link" style="font-size:11px" (click)="go(x.link)">{{ x.linkLabel || 'Abrir' }}</a> }</div>
+            @if (x.evidence.length) { <div class="dg-ev">@for (e of x.evidence; track e) { <div>{{ e }}</div> }</div> }
+          </div>
+        }
+        @if (minorSum(d) !== 0) { <div class="dg-row" style="color:#647687;font-size:12px"><div>Outros efeitos pequenos</div><div class="dg-barcell"></div><div class="mono" style="text-align:right">{{ signed(minorSum(d)) }}</div></div> }
+        @if (!main(d).length) { <div style="padding:16px;font-size:13px;color:#647687">Nenhuma diferença relevante entre os dois períodos.</div> }
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:16px">
+        @if (d.actions.length) {
+          <div class="card" style="padding:16px">
+            <div style="font-size:13px;font-weight:700;color:#172B3A;margin-bottom:10px;display:flex;gap:8px;align-items:center"><ax-icon name="check-circle-2" [size]="15" color="#0875D1" /> Por onde começar</div>
+            @for (a of d.actions; track a.text) {
+              <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid #F0F4F8"><div style="flex:1;font-size:13px;color:#172B3A;line-height:1.45">{{ a.text }}</div>
+                @if (a.link) { <button class="btn-ghost" style="font-size:11px;flex-shrink:0" (click)="go(a.link)">{{ a.linkLabel || 'Abrir' }}</button> }</div>
+            }
+          </div>
+        }
+        @if (d.attention.length) {
+          <div class="card" style="padding:16px">
+            <div style="font-size:13px;font-weight:700;color:#172B3A;margin-bottom:10px;display:flex;gap:8px;align-items:center"><ax-icon name="alert-triangle" [size]="15" color="#D99000" /> Também vale olhar</div>
+            @for (a of d.attention; track a) { <div style="font-size:13px;color:#172B3A;line-height:1.45;padding:8px 0;border-top:1px solid #F0F4F8">{{ a }}</div> }
+          </div>
+        }
+      </div>
+      <p style="font-size:11px;color:#8496A7">Pré-diagnóstico automático calculado com regras e estatística sobre os dados do AXIONYX (sem IA generativa). Use como ponto de partida e confira os lançamentos antes de decisões importantes.</p>
+    }
+  </div>`,
+})
+export class DiagnosticoLucroPage implements OnInit {
+  private api = inject(Api); private router = inject(Router); private auth = inject(AuthService);
+  private route = inject(ActivatedRoute);
+  readonly periods = DIAG_PERIODS;
+  readonly canProfit = this.auth.can(['financeiro.ver', 'contabilidade.ver']);
+  readonly period = signal('30d'); readonly focus = signal<'lucro' | 'vendas'>('lucro');
+  readonly d = signal<any>(null); readonly loading = signal(true); readonly error = signal('');
+  readonly brl = brl;
+  ngOnInit() {
+    const q = this.route.snapshot.queryParamMap;
+    if (DIAG_PERIODS.some((p) => p.k === q.get('periodo'))) this.period.set(q.get('periodo')!);
+    this.focus.set(q.get('foco') === 'vendas' || !this.canProfit ? 'vendas' : 'lucro');
+    this.load();
+  }
+  setPeriod(k: string) { if (k === this.period()) return; this.period.set(k); this.sync(); this.load(); }
+  setFocus(f: 'lucro' | 'vendas') { if (f === this.focus()) return; this.focus.set(f); this.sync(); this.load(); }
+  private sync() { this.router.navigate([], { queryParams: { periodo: this.period(), foco: this.focus() === 'vendas' ? 'vendas' : null }, replaceUrl: true }); }
+  async load() {
+    this.loading.set(true); this.error.set('');
+    try { this.d.set(await this.api.get('/intelligence/profit-diagnosis', { period: this.period(), focus: this.focus() })); }
+    catch (e: any) { this.error.set(e.message); } finally { this.loading.set(false); }
+  }
+  main(d: any) { return d.drivers.filter((x: any) => !x.minor); }
+  minorSum(d: any) { return Math.round(d.drivers.filter((x: any) => x.minor).reduce((a: number, x: any) => a + x.impact, 0)) ; }
+  barW(d: any, v: number) { const max = Math.max(...this.main(d).map((x: any) => Math.abs(x.impact)), 1); return Math.max(2, Math.abs(v) / max * 100); }
+  color(v: number) { return v < 0 ? '#C93636' : v > 0 ? '#18864B' : '#647687'; }
+  signed(v: number) { return (v > 0 ? '+' : v < 0 ? '−' : '') + brl(Math.abs(v)); }
+  pctLabel(d: any) { const h = d.headline; if (h.previous > 0 && h.current < 0) return 'virou prejuízo'; if (h.previous < 0 && h.current > 0) return 'saiu do prejuízo'; if (h.previous <= 0 || h.pct === null) return ''; return (h.pct > 0 ? '+' : '−') + num(Math.abs(h.pct), 1) + '%'; }
+  summary(d: any) {
+    const neg = this.main(d).filter((x: any) => x.impact < 0), pos = this.main(d).filter((x: any) => x.impact > 0);
+    const h = d.headline;
+    if (h.direction === 'estavel') return `Praticamente estável.${neg[0] ? ` O ponto mais negativo foi: ${neg[0].label.toLowerCase()}.` : ''}`;
+    if (h.direction === 'caiu') return `A maior causa da queda foi ${neg[0]?.label.toLowerCase() ?? '—'} (${this.signed(neg[0]?.impact ?? 0)})${neg[1] ? `, seguida de ${neg[1].label.toLowerCase()} (${this.signed(neg[1].impact)})` : ''}.`;
+    return `Subiu, puxado por ${pos[pos.length - 1]?.label.toLowerCase() ?? '—'}${neg[0] ? `. Mesmo assim, ${neg[0].label.toLowerCase()} pesou ${this.signed(neg[0].impact)}` : ''}.`;
+  }
+  kpis(d: any) {
+    const k = d.kpis; const up = (a: number, b: number) => (a === b ? null : a > b);
+    return [
+      { label: 'Faturamento', cur: brl(k.revenue.current), prev: brl(k.revenue.previous), good: up(k.revenue.current, k.revenue.previous) },
+      { label: 'Vendas', cur: num(k.sales.current, 0), prev: num(k.sales.previous, 0), good: up(k.sales.current, k.sales.previous) },
+      { label: 'Ticket médio', cur: brl(k.ticket.current), prev: brl(k.ticket.previous), good: up(k.ticket.current, k.ticket.previous) },
+      ...(k.grossMarginPct ? [{ label: 'Margem bruta', cur: num(k.grossMarginPct.current, 1) + '%', prev: num(k.grossMarginPct.previous, 1) + '%', good: up(k.grossMarginPct.current, k.grossMarginPct.previous) }] : []),
+      { label: 'Desconto médio', cur: num(k.discountPct.current, 1) + '%', prev: num(k.discountPct.previous, 1) + '%', good: k.discountPct.current === k.discountPct.previous ? null : k.discountPct.current < k.discountPct.previous },
+    ];
+  }
+  go(link: string) { this.router.navigateByUrl('/' + link); }
 }

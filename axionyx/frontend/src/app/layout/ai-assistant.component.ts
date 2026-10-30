@@ -6,7 +6,7 @@ import { IconComponent } from '../shared/icon.component';
 import { Api } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 
-interface Msg { role: 'user' | 'ai'; text: string; link?: string; engine?: string }
+interface Msg { role: 'user' | 'ai'; text: string; link?: string; engine?: string; actions?: { link: string; linkLabel?: string }[] }
 
 /** AXIA — assistente do AXIONYX. Responde com consultas reais aos dados (motor de regras). */
 @Component({
@@ -32,11 +32,12 @@ interface Msg { role: 'user' | 'ai'; text: string; link?: string; engine?: strin
             <div [style.background]="m.role === 'user' ? '#0875D1' : 'white'" [style.color]="m.role === 'user' ? 'white' : '#172B3A'" [style.border]="m.role === 'ai' ? '1px solid #DCE4EC' : 'none'"
               [style.border-radius]="m.role === 'user' ? '12px 12px 4px 12px' : '4px 12px 12px 12px'" style="padding:10px 14px;font-size:13px;line-height:1.6;white-space:pre-line">{{ m.text }}</div>
             @if (m.role === 'ai' && m.engine) {
-              <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:4px"><span style="font-size:10px;color:#647687">Fonte: dados do AXIONYX · motor de regras</span></div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:4px"><span style="font-size:10px;color:#647687">Fonte: dados do AXIONYX · motor de regras e estatística</span></div>
             }
             @if (m.link) {
               <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
-                <button (click)="go(m.link)" style="font-size:11px;padding:4px 10px;border:1px solid #0875D1;border-radius:6px;background:white;color:#0875D1;cursor:pointer;font-weight:500">Abrir tela relacionada</button>
+                <button (click)="go(m.link)" style="font-size:11px;padding:4px 10px;border:1px solid #0875D1;border-radius:6px;background:#0875D1;color:white;cursor:pointer;font-weight:600">{{ m.link.startsWith('diagnostico-lucro') ? 'Ver diagnóstico completo' : 'Abrir tela relacionada' }}</button>
+                @for (a of m.actions ?? []; track a.link) { <button (click)="go(a.link)" style="font-size:11px;padding:4px 10px;border:1px solid #0875D1;border-radius:6px;background:white;color:#0875D1;cursor:pointer;font-weight:500">{{ a.linkLabel || 'Abrir' }}</button> }
               </div>
             }
           </div>
@@ -68,7 +69,7 @@ interface Msg { role: 'user' | 'ai'; text: string; link?: string; engine?: strin
       <button class="btn-primary" (click)="send(input)" style="padding:7px 12px" aria-label="Enviar"><ax-icon name="send" [size]="14" /></button>
     </div>
     <div style="padding:6px 12px;background:#F8FAFC;border-top:1px solid #F0F4F8">
-      <p style="font-size:10px;color:#A0AFBF;text-align:center">⚠️ A AXIA auxilia decisões — ações críticas requerem aprovação humana. Integração com modelo de linguagem: pendente de configuração.</p>
+      <p style="font-size:10px;color:#A0AFBF;text-align:center">⚠️ A AXIA auxilia decisões — ações críticas requerem aprovação humana. Respostas calculadas com os dados do sistema.</p>
     </div>
   </div>`,
 })
@@ -80,8 +81,8 @@ export class AiAssistantComponent {
   readonly scroll = viewChild<ElementRef<HTMLElement>>('scroll');
   readonly loading = signal(false);
   input = '';
-  readonly suggestions = ['Como foram as vendas de hoje?', 'Quais produtos estão abaixo do estoque mínimo?', 'Resumo de alertas', 'Quais são os produtos mais vendidos?', 'Títulos vencidos'];
-  readonly messages = signal<Msg[]>([{ role: 'ai', text: `Olá, ${(this.auth.me()?.user.name || '').split(' ')[0]}! Sou a AXIA. Consulto os dados reais do AXIONYX para responder sobre vendas, estoque, financeiro, condicionais e clientes. O que você gostaria de investigar?` }]);
+  readonly suggestions = [...(this.auth.can(['financeiro.ver', 'contabilidade.ver']) ? ['Por que meu lucro caiu?'] : this.auth.can(['vendas.ver', 'relatorios.ver']) ? ['Por que minhas vendas caíram?'] : []), 'Como foram as vendas de hoje?', 'Quais produtos estão abaixo do estoque mínimo?', 'Resumo de alertas', 'Quais são os produtos mais vendidos?', 'Títulos vencidos'];
+  readonly messages = signal<Msg[]>([{ role: 'ai', text: `Olá, ${(this.auth.me()?.user.name || '').split(' ')[0]}! Sou a AXIA. Consulto os dados reais do AXIONYX para responder sobre vendas, estoque, financeiro, condicionais e clientes, e faço um pré-diagnóstico quando o lucro ou as vendas caem. O que você gostaria de investigar?` }]);
 
   async send(text: string) {
     if (!text?.trim() || this.loading()) return;
@@ -89,7 +90,7 @@ export class AiAssistantComponent {
     this.input = ''; this.loading.set(true); this.scrollDown();
     try {
       const r = await this.api.post<any>('/assistant/ask', { question: text });
-      this.messages.update((m) => [...m, { role: 'ai', text: r.text, link: r.link, engine: r.engine }]);
+      this.messages.update((m) => [...m, { role: 'ai', text: r.text, link: r.link, engine: r.engine, actions: (r.actions ?? []).filter((a: any, i: number, arr: any[]) => a.link && arr.findIndex((b: any) => b.link === a.link) === i) }]);
     } catch (e: any) {
       this.messages.update((m) => [...m, { role: 'ai', text: 'Não consegui consultar agora: ' + e.message }]);
     } finally { this.loading.set(false); this.scrollDown(); }

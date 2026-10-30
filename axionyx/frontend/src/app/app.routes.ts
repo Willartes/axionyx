@@ -118,6 +118,7 @@ export const routes: Routes = [
       { path: 'estoque-inteligente', ...p('estoque.ver'), loadComponent: () => import('./pages/intelligence/intelligence.pages').then((m) => m.EstoqueInteligentePage) },
       { path: 'pesquisa-operacional', ...p('dashboard.ver'), loadComponent: () => import('./pages/intelligence/intelligence.pages').then((m) => m.PesquisaOperacionalPage) },
       { path: 'simulacoes', ...p('dashboard.ver'), loadComponent: () => import('./pages/intelligence/intelligence.pages').then((m) => m.SimulacoesPage) },
+      { path: 'diagnostico-lucro', ...p(['financeiro.ver', 'contabilidade.ver', 'vendas.ver', 'relatorios.ver']), loadComponent: () => import('./pages/intelligence/intelligence.pages').then((m) => m.DiagnosticoLucroPage) },
       { path: 'ia-insights', ...p('dashboard.ver'), loadComponent: () => import('./pages/intelligence/intelligence.pages').then((m) => m.IaInsightsPage) },
       // Platform
       { path: 'relatorios', ...p('relatorios.ver'), loadComponent: () => import('./pages/relatorios/relatorios.page').then((m) => m.RelatoriosPage) },
