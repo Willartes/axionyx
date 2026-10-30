@@ -116,7 +116,9 @@ router.get('/api/saas/contracts', SA, async (ctx) => {
                            (SELECT count(*)::int FROM saas_reviews r WHERE r.contract_id = k.id AND r.status = 'aberta') AS open_reviews,
                            (SELECT min(due_date) FROM saas_charges ch WHERE ch.contract_id = k.id AND ch.status = 'pendente') AS next_due,
                            (SELECT COALESCE(sum(paid_amount),0)::float8 FROM saas_charges ch WHERE ch.contract_id = k.id AND ch.status = 'paga') AS ltv,
-                           (SELECT count(*)::int FROM user_companies uc JOIN users u ON u.id = uc.user_id WHERE uc.company_id = k.company_id AND uc.active AND NOT u.is_superadmin) AS users,
+                           (SELECT count(*)::int FROM user_companies uc JOIN users u ON u.id = uc.user_id WHERE uc.company_id = k.company_id AND NOT u.is_superadmin AND ((uc.active AND u.active AND NOT uc.invite_pending) OR uc.invite_pending)) AS users,
+                           (SELECT count(*)::int FROM branches b WHERE b.company_id = k.company_id AND b.active) AS branches,
+                           COALESCE(k.max_users_override, p.max_users) AS users_limit, COALESCE(k.max_branches_override, p.max_branches) AS branches_limit,
                            (SELECT max(s.last_seen_at) FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.company_id = k.company_id AND NOT u.is_superadmin) AS last_access
                       FROM saas_contracts k LEFT JOIN saas_plans p ON p.id = k.plan_id ${w.sql}
                      ORDER BY CASE k.status WHEN 'em_analise' THEN 0 WHEN 'inadimplente' THEN 1 WHEN 'suspenso' THEN 2 WHEN 'aguardando_pagamento' THEN 3 WHEN 'ativo' THEN 4 ELSE 5 END, k.company_name`, w.params, ctx.query, 50)
@@ -124,15 +126,15 @@ router.get('/api/saas/contracts', SA, async (ctx) => {
 
 router.get('/api/saas/contracts/:id', SA, async (ctx) => {
   sa(ctx)
-  const k = await db.one(`SELECT k.*, p.name AS plan_name FROM saas_contracts k LEFT JOIN saas_plans p ON p.id = k.plan_id WHERE k.id = $1`, [ctx.params.id])
+  const k = await db.one(`SELECT k.*, p.name AS plan_name, p.max_users AS plan_max_users, p.max_branches AS plan_max_branches FROM saas_contracts k LEFT JOIN saas_plans p ON p.id = k.plan_id WHERE k.id = $1`, [ctx.params.id])
   if (!k) throw notFound('Contrato')
   const [charges, reviews, events, company] = await Promise.all([
     db.many(`SELECT * FROM saas_charges WHERE contract_id = $1 ORDER BY period_start DESC, created_at DESC`, [k.id]),
     db.many(`SELECT r.*, u.name AS resolved_by_name FROM saas_reviews r LEFT JOIN users u ON u.id = r.resolved_by WHERE r.contract_id = $1 ORDER BY r.created_at DESC`, [k.id]),
     db.many(`SELECT e.*, u.name AS user_name FROM saas_contract_events e LEFT JOIN users u ON u.id = e.user_id WHERE e.contract_id = $1 ORDER BY e.created_at DESC, e.id DESC`, [k.id]),
     k.company_id ? db.one(`SELECT c.id, c.name, c.active, c.created_at,
-        (SELECT count(*)::int FROM branches b WHERE b.company_id = c.id) AS branches,
-        (SELECT count(*)::int FROM user_companies uc JOIN users u ON u.id = uc.user_id WHERE uc.company_id = c.id AND uc.active AND NOT u.is_superadmin) AS users,
+        (SELECT count(*)::int FROM branches b WHERE b.company_id = c.id AND b.active) AS branches,
+        (SELECT count(*)::int FROM user_companies uc JOIN users u ON u.id = uc.user_id WHERE uc.company_id = c.id AND NOT u.is_superadmin AND ((uc.active AND u.active AND NOT uc.invite_pending) OR uc.invite_pending)) AS users,
         (SELECT max(s.last_seen_at) FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.company_id = c.id AND NOT u.is_superadmin) AS last_access,
         (SELECT count(*)::int FROM sales sl WHERE sl.company_id = c.id AND sl.created_at > now() - interval '30 days') AS sales_30d
       FROM companies c WHERE c.id = $1`, [k.company_id]) : null,
@@ -188,14 +190,17 @@ router.post('/api/saas/contracts', SA, async (ctx) => {
 router.put('/api/saas/contracts/:id', SA, async (ctx) => {
   sa(ctx, 'carteira.propostas')
   const partial: any = {}; for (const [kk, s] of Object.entries(contractSchema)) if (kk !== 'leadId') partial[kk] = (s as any).optional()
-  const b: any = parse(v.object({ ...partial, paidUntil: v.date().optional() }), ctx.body)
+  const b: any = parse(v.object({ ...partial, paidUntil: v.date().optional(),
+    // limite específico deste cliente (vazio = segue o plano)
+    maxUsersOverride: v.int({ min: 1, max: 100000 }).nullable().optional(), maxBranchesOverride: v.int({ min: 1, max: 10000 }).nullable().optional() }), ctx.body)
   if (b.cnpj) { if (!isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.'); b.cnpj = onlyDigits(b.cnpj) }
   if (b.contactDoc) { if (!isValidCPF(b.contactDoc)) throw unprocessable('CPF do responsável inválido.'); b.contactDoc = onlyDigits(b.contactDoc) }
   return tx(async (c) => {
     const k = await c.one(`SELECT * FROM saas_contracts WHERE id = $1 FOR UPDATE`, [ctx.params.id])
     if (!k) throw notFound('Contrato')
     if (b.planId && !(await c.one(`SELECT 1 FROM saas_plans WHERE id = $1`, [b.planId]))) throw unprocessable('Plano inválido.')
-    const map: Record<string, string> = { planId: 'plan_id', price: 'price', billingMode: 'billing_mode', graceDays: 'grace_days', notes: 'notes', contactName: 'contact_name', contactEmail: 'contact_email', contactPhone: 'contact_phone', contactDoc: 'contact_doc', paidUntil: 'paid_until' }
+    const map: Record<string, string> = { planId: 'plan_id', price: 'price', billingMode: 'billing_mode', graceDays: 'grace_days', notes: 'notes', contactName: 'contact_name', contactEmail: 'contact_email', contactPhone: 'contact_phone', contactDoc: 'contact_doc', paidUntil: 'paid_until',
+      maxUsersOverride: 'max_users_override', maxBranchesOverride: 'max_branches_override' }
     if (k.status === 'em_analise') Object.assign(map, { companyName: 'company_name', tradeName: 'trade_name', cnpj: 'cnpj', segment: 'segment', taxRegime: 'tax_regime', address: 'address' })
     const keys = Object.keys(b).filter((x) => map[x])
     if (!keys.length) throw unprocessable('Nada para alterar (dados cadastrais só podem mudar enquanto a proposta está em análise).')

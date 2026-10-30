@@ -55,7 +55,7 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
       <ax-state [loading]="loading()" [empty]="!loading() && !items().length" emptyText="Nenhum contrato. Crie uma proposta ou vincule um cliente existente." emptyIcon="building-2" />
       @if (items().length) {
         <div style="overflow-x:auto"><table class="data-table" style="width:100%;border-collapse:collapse">
-          <thead><tr><th>Cliente</th><th>Plano</th><th class="num">Mensal</th><th>Cobrança</th><th>Situação</th><th>Pago até</th><th class="num">Usuários</th><th>Último acesso</th><th class="num">Recebido</th><th></th></tr></thead>
+          <thead><tr><th>Cliente</th><th>Plano</th><th class="num">Mensal</th><th>Cobrança</th><th>Situação</th><th>Pago até</th><th class="num">Usuários / filiais</th><th>Último acesso</th><th class="num">Recebido</th><th></th></tr></thead>
           <tbody>@for (k of items(); track k.id) {
             <tr style="cursor:pointer" (click)="openDetail(k.id)">
               <td><div style="font-weight:600">{{ k.trade_name || k.company_name }}</div><div class="muted" style="font-size:11.5px">#{{ k.number }} · {{ seg(k.segment) }}{{ k.cnpj ? ' · ' + (k.cnpj | doc) : '' }}</div></td>
@@ -64,7 +64,7 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
                 @if (k.open_reviews) { <span class="badge badge-danger" style="margin-left:4px" title="Exceções abertas">{{ k.open_reviews }}</span> }
                 @if (k.status === 'em_analise') { <span class="badge" style="margin-left:4px" [style.background]="risk(k.risk_level).bg" [style.color]="risk(k.risk_level).color">{{ risk(k.risk_level).label }}</span> }</td>
               <td class="mono" style="font-size:12px" [style.color]="k.paid_until && k.paid_until < today ? '#C93636' : null">{{ k.paid_until ? (k.paid_until | dt) : '—' }}</td>
-              <td class="num">{{ k.company_id ? k.users : '—' }}</td><td style="font-size:12px">{{ k.last_access ? (k.last_access | dtt) : '—' }}</td><td class="num">{{ k.ltv | brl }}</td>
+              <td class="num" style="white-space:nowrap">@if (k.company_id) { <span [style.color]="k.users_limit && k.users >= k.users_limit ? '#C93636' : null">{{ k.users }}{{ k.users_limit ? '/' + k.users_limit : '' }}</span> · <span [style.color]="k.branches_limit && k.branches >= k.branches_limit ? '#C93636' : null">{{ k.branches }}{{ k.branches_limit ? '/' + k.branches_limit : '' }}</span> } @else { — }</td><td style="font-size:12px">{{ k.last_access ? (k.last_access | dtt) : '—' }}</td><td class="num">{{ k.ltv | brl }}</td>
               <td><button class="btn-ghost" style="font-size:12px" (click)="$event.stopPropagation(); openDetail(k.id)">Abrir</button></td></tr>
           }</tbody></table></div>
       }
@@ -182,8 +182,8 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
         </div>
         <div><div class="sec">Uso do sistema</div>
           @if (k.company; as c) {
-            <div class="kv"><span>Usuários</span><span>{{ c.users }}</span></div>
-            <div class="kv"><span>Filiais</span><span>{{ c.branches }}</span></div>
+            <div class="kv"><span>Usuários</span><span>{{ c.users }}{{ lim(k, 'users') ? ' de ' + lim(k, 'users') : ' (sem limite)' }}<span class="muted" style="font-size:11px">{{ k.max_users_override ? ' · limite do contrato' : '' }}</span></span></div>
+            <div class="kv"><span>Filiais ativas</span><span>{{ c.branches }}{{ lim(k, 'branches') ? ' de ' + lim(k, 'branches') : ' (sem limite)' }}<span class="muted" style="font-size:11px">{{ k.max_branches_override ? ' · limite do contrato' : '' }}</span></span></div>
             <div class="kv"><span>Último acesso</span><span>{{ c.last_access ? (c.last_access | dtt) : 'nunca' }}</span></div>
             <div class="kv"><span>Vendas (30 dias)</span><span>{{ c.sales_30d }}</span></div>
             <div class="kv"><span>Cliente desde</span><span>{{ k.started_at ? (k.started_at | dt) : '—' }}</span></div>
@@ -296,6 +296,8 @@ type Reason = { title: string; label: string; confirm: string; danger?: boolean;
       <div><label class="field-label">Responsável</label><input class="input-field" [(ngModel)]="e.contactName" /></div>
       <div><label class="field-label">E-mail do responsável</label><input class="input-field" [(ngModel)]="e.contactEmail" /></div>
       <div><label class="field-label">Telefone</label><input class="input-field" [(ngModel)]="e.contactPhone" /></div>
+      <div><label class="field-label">Limite de usuários deste cliente</label><input class="input-field" type="number" min="1" [(ngModel)]="e.maxUsersOverride" [placeholder]="det()?.plan_max_users ? 'vazio = plano (' + det().plan_max_users + ')' : 'vazio = plano (ilimitado)'" /></div>
+      <div><label class="field-label">Limite de filiais deste cliente</label><input class="input-field" type="number" min="1" [(ngModel)]="e.maxBranchesOverride" [placeholder]="det()?.plan_max_branches ? 'vazio = plano (' + det().plan_max_branches + ')' : 'vazio = plano (ilimitado)'" /></div>
       @if (det()?.status === 'ativo' || det()?.status === 'inadimplente' || det()?.status === 'suspenso') { <div><label class="field-label">Pago até (ajuste)</label><input class="input-field" type="date" [(ngModel)]="e.paidUntil" /></div> }
       <div class="span-2"><label class="field-label">Observações internas</label><textarea class="input-field" rows="2" [(ngModel)]="e.notes"></textarea></div>
     </div>
@@ -439,11 +441,14 @@ export class SaasClientesPage implements OnInit {
       this.cOpen.set(false); await this.reload();
     } catch (e) { this.toast.error(e); } finally { this.busy.set(false); }
   }
-  editOpen() { const k = this.det(); this.e = { planId: k.plan_id || '', price: Number(k.price), billingMode: k.billing_mode, graceDays: k.grace_days, contactName: k.contact_name, contactEmail: k.contact_email, contactPhone: k.contact_phone || '', notes: k.notes || '', paidUntil: k.paid_until || '' }; this.eOpen.set(true); }
+  editOpen() { const k = this.det(); this.e = { planId: k.plan_id || '', price: Number(k.price), billingMode: k.billing_mode, graceDays: k.grace_days, contactName: k.contact_name, contactEmail: k.contact_email, contactPhone: k.contact_phone || '', notes: k.notes || '', paidUntil: k.paid_until || '', maxUsersOverride: k.max_users_override ?? '', maxBranchesOverride: k.max_branches_override ?? '' }; this.eOpen.set(true); }
+  lim(k: any, kind: 'users' | 'branches') { return kind === 'users' ? (k.max_users_override ?? k.plan_max_users ?? null) : (k.max_branches_override ?? k.plan_max_branches ?? null); }
   async saveEdit() {
     const e = this.e, k = this.det();
     const body: any = { price: Number(e.price), billingMode: e.billingMode, graceDays: Number(e.graceDays), contactName: e.contactName, contactEmail: e.contactEmail, contactPhone: digits(e.contactPhone) || undefined, notes: e.notes || undefined };
     if (e.planId) body.planId = e.planId;
+    body.maxUsersOverride = e.maxUsersOverride === '' || e.maxUsersOverride === null ? null : Number(e.maxUsersOverride);
+    body.maxBranchesOverride = e.maxBranchesOverride === '' || e.maxBranchesOverride === null ? null : Number(e.maxBranchesOverride);
     if (e.paidUntil && e.paidUntil !== k.paid_until) body.paidUntil = e.paidUntil;
     this.busy.set(true);
     try { await this.api.put('/saas/contracts/' + k.id, body); this.toast.success('Contrato atualizado.'); this.eOpen.set(false); await this.reload(); }

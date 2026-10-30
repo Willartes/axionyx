@@ -10,6 +10,7 @@ import { getSettings, sanitizeSettings } from '../services/settings'
 import { requirePlatform } from '../core/platform'
 import { notifyCompanyInvite } from '../services/activation'
 import { sendActivation, inviteOrFallback, emailDeliveryAvailable, unusablePasswordHash, INVITE_SQL } from '../services/activation'
+import { assertCanAdd, companyLimits } from '../services/limits'
 
 const address = v.object({ cep: v.string().optional(), logradouro: v.string().optional(), numero: v.string().optional(), complemento: v.string().optional(),
   bairro: v.string().optional(), cidade: v.string().optional(), uf: v.string({ max: 2 }).optional(), codigoMunicipio: v.string({ max: 7 }).optional() }).optional()
@@ -62,6 +63,7 @@ router.post('/api/admin/branches', { perm: 'admin.empresas' }, async (ctx) => {
   const b = parse(v.object({ code: v.string({ min: 1, max: 10 }), name: v.string({ min: 2, max: 100 }), cnpj: v.string().optional(), ie: v.string().optional(), address, phone: v.string().optional() }), ctx.body)
   if (b.cnpj && !isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.')
   return tx(async (c) => {
+    await assertCanAdd(c, ctx.user, ctx.user.companyId, 'branches')
     const r = await c.one(`INSERT INTO branches(company_id, code, name, cnpj, ie, address, phone) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
       [ctx.user.companyId, b.code, b.name, b.cnpj ? onlyDigits(b.cnpj) : null, b.ie ?? null, JSON.stringify(b.address ?? {}), b.phone ?? null])
     const acc = await c.one(`INSERT INTO financial_accounts(company_id, branch_id, name, type) VALUES ($1,$2,$3,'caixa') RETURNING id`, [ctx.user.companyId, r.id, `Caixa ${b.name}`])
@@ -76,11 +78,15 @@ router.put('/api/admin/branches/:id', { perm: 'admin.empresas' }, async (ctx) =>
   if (b.cnpj) { if (!isValidCNPJ(b.cnpj)) throw unprocessable('CNPJ inválido.'); b.cnpj = onlyDigits(b.cnpj) }
   const keys = Object.keys(b)
   if (!keys.length) throw unprocessable('Nada para alterar.')
-  const r = await db.one(`UPDATE branches SET ${keys.map((k, i) => `${k} = $${i + 3}`).join(', ')} WHERE id = $1 AND company_id = $2 RETURNING *`,
-    [ctx.params.id, ctx.user.companyId, ...keys.map((k) => (k === 'address' ? JSON.stringify(b[k]) : b[k]))])
-  if (!r) throw notFound('Filial')
-  await audit(null, ctx, 'filial.alterada', 'branch', r.id, b, 'warning')
-  return r
+  return tx(async (c) => {
+    const cur = await c.one(`SELECT active FROM branches WHERE id = $1 AND company_id = $2 FOR UPDATE`, [ctx.params.id, ctx.user.companyId])
+    if (!cur) throw notFound('Filial')
+    if (b.active === true && !cur.active) await assertCanAdd(c, ctx.user, ctx.user.companyId, 'branches')
+    const r = await c.one(`UPDATE branches SET ${keys.map((k, i) => `${k} = $${i + 3}`).join(', ')} WHERE id = $1 AND company_id = $2 RETURNING *`,
+      [ctx.params.id, ctx.user.companyId, ...keys.map((k) => (k === 'address' ? JSON.stringify(b[k]) : b[k]))])
+    await audit(c, ctx, 'filial.alterada', 'branch', r.id, b, 'warning')
+    return r
+  })
 })
 
 router.post('/api/admin/cash-registers', { perm: 'admin.empresas' }, async (ctx) => {
@@ -90,6 +96,9 @@ router.post('/api/admin/cash-registers', { perm: 'admin.empresas' }, async (ctx)
   const acc = await db.one(`SELECT id FROM financial_accounts WHERE company_id = $1 AND branch_id = $2 AND type = 'caixa' LIMIT 1`, [ctx.user.companyId, b.branchId])
   return db.one(`INSERT INTO cash_registers(company_id, branch_id, name, account_id) VALUES ($1,$2,$3,$4) RETURNING *`, [ctx.user.companyId, b.branchId, b.name, acc?.id ?? null])
 })
+
+/** Uso x limite do plano (usuários e filiais) da empresa atual. */
+router.get('/api/admin/limits', { perm: ['admin.usuarios', 'admin.empresas'] }, async (ctx) => companyLimits(ctx.user.companyId))
 
 // ---------- Usuários ----------
 router.get('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
@@ -160,7 +169,9 @@ router.post('/api/admin/users', { perm: 'admin.usuarios' }, async (ctx) => {
       if (u.is_superadmin) throw unprocessable('Este e-mail não pode ser usado para um usuário da empresa. Use outro e-mail.')
       const linked = await c.one(`SELECT invite_pending FROM user_companies WHERE user_id = $1 AND company_id = $2`, [u.id, ctx.user.companyId])
       if (linked) throw conflict(linked.invite_pending ? 'Já existe um convite pendente para este e-mail.' : 'Usuário já vinculado a esta empresa.')
+      await assertCanAdd(c, ctx.user, ctx.user.companyId, 'users')
     } else {
+      await assertCanAdd(c, ctx.user, ctx.user.companyId, 'users')
       u = mode === 'email'
         ? await c.one(`INSERT INTO users(name, email, password_hash, must_change_password, pending_activation) VALUES ($1,$2,$3,false,true) RETURNING id`, [b.name, b.email, unusablePasswordHash()])
         : await c.one(`INSERT INTO users(name, email, password_hash, must_change_password) VALUES ($1,$2,$3,$4) RETURNING id`, [b.name, b.email, hashPassword(temp), mode === 'senha'])
@@ -193,6 +204,7 @@ router.put('/api/admin/users/:id', { perm: 'admin.usuarios' }, async (ctx) => {
       await audit(c, ctx, 'usuario.convite_cancelado', 'user', ctx.params.id, null, 'warning')
       return { ok: true, inviteCancelled: true }
     }
+    if (b.active === true && !uc.active) await assertCanAdd(c, ctx.user, ctx.user.companyId, 'users')
     if (b.name) { const cu = await companyUser(c, ctx, ctx.params.id).catch(() => null); if (!cu || cu.other_companies > 0) delete b.name } // nome da conta compartilhada é da própria pessoa
     if (ctx.params.id === ctx.user.id && (b.active === false || (b.roleId && b.roleId !== uc.role_id))) throw unprocessable('Você não pode desativar ou alterar o próprio perfil.')
     if (b.name) await c.query(`UPDATE users SET name = $2, updated_at = now() WHERE id = $1`, [ctx.params.id, b.name])

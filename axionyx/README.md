@@ -298,6 +298,14 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.14.0 — Limites de usuários e filiais por plano
+- Os campos "Máx. usuários" e "Máx. filiais" do plano passam a valer: criar, convidar ou reativar além do limite é bloqueado com mensagem clara.
+- Contam os usuários ativos e os convites pendentes (não contam desativados nem a equipe da plataforma); filiais ativas.
+- Limite específico por cliente no contrato (Minha Carteira › Clientes e Contratos › Editar condições); vazio = segue o plano.
+- Empresas sem contrato e planos sem limite continuam ilimitados. Reduzir o limite nunca desativa nada: só impede novos cadastros.
+- Indicadores "X de Y" em Usuários e em Empresas › Filiais, e uso por cliente na carteira. Trava por empresa evita ultrapassar o limite com cadastros simultâneos.
+- Migração 019 (só acrescenta colunas ao contrato).
+
 ### 1.13.1 — IA mais rápida e modelo padrão do Gemini atualizado
 - Raciocínio interno reduzido nas consultas (Gemini 3: nível "low"; Gemini 2.5: orçamento mínimo; OpenAI gpt-5 e série o: esforço "low"), o que evita estouro de tempo quando a IA usa as ferramentas do sistema.
 - Tempo máximo por etapa de 120 s, com mensagem que sugere um modelo mais rápido.

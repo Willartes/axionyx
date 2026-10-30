@@ -42,8 +42,9 @@ const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
       }
     </div>
     <div class="card" style="overflow:hidden">
-      <div style="padding:12px 16px;display:flex;align-items:center"><div style="flex:1;font-size:13px;font-weight:600">Filiais de {{ auth.me()?.company?.trade_name || auth.me()?.company?.name }}</div>
-        <button class="btn-secondary" style="font-size:12px" (click)="editBr(null)"><ax-icon name="plus" [size]="12" /> Nova filial</button></div>
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:10px"><div style="flex:1;font-size:13px;font-weight:600">Filiais de {{ auth.me()?.company?.trade_name || auth.me()?.company?.name }}
+          @if (limits()?.branches?.limit) { <span style="font-size:12px;font-weight:600;margin-left:6px" [style.color]="branchesFull() ? '#C93636' : '#18864B'">{{ limits().branches.used }} de {{ limits().branches.limit }} ativas do {{ limits().branches.source === 'contrato' ? 'contrato' : 'plano' }}</span> }</div>
+        <button class="btn-secondary" style="font-size:12px" (click)="editBr(null)" [disabled]="branchesFull()" [title]="branchesFull() ? 'Limite de filiais do plano atingido. Desative uma filial ou fale com o suporte para ampliar.' : ''"><ax-icon name="plus" [size]="12" /> Nova filial</button></div>
       <table class="data-table" style="width:100%;border-collapse:collapse"><thead><tr><th>Código</th><th>Nome</th><th>CNPJ</th><th>IE</th><th>Cidade/UF</th><th class="num">Usuários</th><th>Status</th><th></th></tr></thead>
         <tbody>@for (b of branches(); track b.id) { <tr><td class="mono">{{ b.code }}</td><td style="font-weight:500">{{ b.name }}</td><td class="mono" style="font-size:12px">{{ b.cnpj | doc }}</td><td class="mono" style="font-size:12px">{{ b.ie || '—' }}</td>
           <td style="font-size:12px">{{ b.address?.cidade || '—' }}{{ b.address?.uf ? '/' + b.address.uf : '' }}</td><td class="num">{{ b.users }}</td>
@@ -122,7 +123,9 @@ export class AdminEmpresasPage implements OnInit {
   ngOnInit() { this.load(); this.api.get<any>('/segments').then((r) => this.segments.set(r.segments), () => {}); if (this.auth.pcan('carteira.ver')) this.loadLeads(); }
   async loadLeads() { try { this.leads.set((await this.api.get<any>('/admin/leads', { size: 100 })).items); } catch { /* sem permissão */ } }
   async leadStatus(l: any, status: string) { try { await this.api.put('/admin/leads/' + l.id, { status }); this.loadLeads(); } catch (e) { this.toast.error(e); } }
-  async load() { this.loading.set(true); try { const [c, b] = await Promise.all([this.api.get<any[]>('/admin/companies'), this.api.get<any[]>('/admin/branches')]); this.companies.set(c); this.branches.set(b); } finally { this.loading.set(false); } }
+  readonly limits = signal<any>(null);
+  readonly branchesFull = computed(() => { const b = this.limits()?.branches; return !!b?.limit && b.used >= b.limit; });
+  async load() { this.loading.set(true); this.api.get('/admin/limits').then((l) => this.limits.set(l), () => {}); try { const [c, b] = await Promise.all([this.api.get<any[]>('/admin/companies'), this.api.get<any[]>('/admin/branches')]); this.companies.set(c); this.branches.set(b); } finally { this.loading.set(false); } }
   newCo() { this.co = { name: '', trade_name: '', cnpj: '', ie: '', tax_regime: 'simples', branchName: 'Matriz', address: {}, segment: 'moda' }; this.coOpen.set(true); }
   segName(id: string) { return this.segments().find((x) => x.id === id)?.name ?? (id || 'Moda e vestuário'); }
   editCo(e: any) { this.co = { ...e, address: { ...(e.address || {}) } }; this.coOpen.set(true); }
@@ -153,11 +156,14 @@ export class AdminEmpresasPage implements OnInit {
   template: `
   <div style="display:flex;flex-direction:column;height:100%">
     <div style="padding:14px 24px;background:white;border-bottom:1px solid #DCE4EC;display:flex;align-items:center;gap:12px">
-      <div style="flex:1"><h1 style="font-size:16px;font-weight:700;color:#172B3A">Usuários</h1><p style="font-size:12px;color:#647687">{{ list.total() }} usuário(s) · {{ activeCount() }} ativo(s) na página</p></div>
+      <div style="flex:1"><h1 style="font-size:16px;font-weight:700;color:#172B3A">Usuários</h1><p style="font-size:12px;color:#647687">{{ list.total() }} usuário(s) · {{ activeCount() }} ativo(s) na página
+        @if (limits()?.users?.limit) { · <span [style.color]="usersFull() ? '#C93636' : '#18864B'" style="font-weight:600" [title]="'Contam usuários ativos e convites pendentes. Limite do ' + (limits().users.source === 'contrato' ? 'contrato' : 'plano ' + (limits().plan || ''))">{{ limits().users.used }} de {{ limits().users.limit }} do {{ limits().users.source === 'contrato' ? 'contrato' : 'plano' }}</span> }</p></div>
       <input class="input-field" style="width:220px" placeholder="Nome ou e-mail" [(ngModel)]="q" (keyup.enter)="search()" />
       @if (auth.can('admin.perfis')) { <button class="btn-secondary" style="font-size:12px" (click)="router.navigateByUrl('/admin-permissoes')"><ax-icon name="shield" [size]="13" /> Gerenciar permissões</button> }
-      <button class="btn-primary" style="font-size:12px" (click)="edit(null)"><ax-icon name="plus" [size]="13" /> Novo usuário</button>
+      <button class="btn-primary" style="font-size:12px" (click)="edit(null)" [disabled]="usersFull()" [title]="usersFull() ? 'Limite de usuários do plano atingido' : ''"><ax-icon name="plus" [size]="13" /> Novo usuário</button>
     </div>
+    @if (usersFull()) { <div style="padding:8px 24px;background:#FFF8EB;border-bottom:1px solid #F5E0B0;font-size:12.5px;color:#8A5B00;display:flex;gap:8px;align-items:center"><ax-icon name="alert-triangle" [size]="14" />
+      O {{ limits().users.source === 'contrato' ? 'contrato' : 'plano' }} desta empresa permite até {{ limits().users.limit }} usuário(s), contando convites pendentes. Desative um usuário ou cancele um convite para liberar uma vaga, ou fale com o suporte AXIONYX para ampliar.</div> }
     <div style="flex:1;overflow-y:auto">
       <table class="data-table" style="width:100%;border-collapse:collapse;background:white">
         <thead style="position:sticky;top:0"><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Filiais</th><th>MFA</th><th>Último acesso</th><th>Status</th><th>Ações</th></tr></thead>
@@ -211,7 +217,10 @@ export class AdminUsuariosPage implements OnInit {
   inviteTitle(u: any) { return u.last_email ? `Último e-mail: ${u.last_email.status} em ${new Date(u.last_email.at).toLocaleString('pt-BR')}` : ''; }
   q = ''; f: any = { branchIds: [] };
   readonly activeCount = computed(() => this.list.items().filter((u) => u.active).length);
-  ngOnInit() { this.lk.ensure(); this.list.load(); this.api.get<any[]>('/admin/roles').then((r) => this.roles.set(r)); }
+  readonly limits = signal<any>(null);
+  readonly usersFull = computed(() => { const u = this.limits()?.users; return !!u?.limit && u.used >= u.limit; });
+  loadLimits() { this.api.get('/admin/limits').then((l) => this.limits.set(l), () => {}); }
+  ngOnInit() { this.lk.ensure(); this.list.load(); this.loadLimits(); this.api.get<any[]>('/admin/roles').then((r) => this.roles.set(r)); }
   ini(n: string) { return n.split(' ').filter(Boolean).map((p) => p[0]).slice(0, 2).join('').toUpperCase(); }
   locked(u: any) { return u.locked_until && new Date(u.locked_until) > new Date(); }
   search() { this.list.query = { q: this.q || undefined }; this.list.load(1); }
@@ -228,11 +237,11 @@ export class AdminUsuariosPage implements OnInit {
         const r: any = await this.api.post('/admin/users', { ...body, email: f.email, ...deliveryBody(this.delivery(), this.manualPwd()) });
         if (r.invite || r.temporaryPassword || r.invitedExisting) { this.accUser.set({ name: f.name, email: f.email }); this.accEndpoint.set(null); this.accResult.set(r); this.accOpen.set(true); }
       }
-      this.toast.success('Usuário salvo.'); this.open.set(false); this.list.reload(); this.lk.invalidate();
+      this.toast.success('Usuário salvo.'); this.open.set(false); this.list.reload(); this.lk.invalidate(); this.loadLimits();
     } catch (e) { this.toast.error(e); }
   }
-  async cancelInvite(u: any) { if (!confirm(`Cancelar o convite de ${u.name}?`)) return; try { await this.api.put('/admin/users/' + u.id, { active: false }); this.toast.success('Convite cancelado.'); this.list.reload(); } catch (e) { this.toast.error(e); } }
-  async toggle(u: any) { try { await this.api.put('/admin/users/' + u.id, { active: !u.active }); this.list.reload(); } catch (e) { this.toast.error(e); } }
+  async cancelInvite(u: any) { if (!confirm(`Cancelar o convite de ${u.name}?`)) return; try { await this.api.put('/admin/users/' + u.id, { active: false }); this.toast.success('Convite cancelado.'); this.list.reload(); this.loadLimits(); } catch (e) { this.toast.error(e); } }
+  async toggle(u: any) { try { await this.api.put('/admin/users/' + u.id, { active: !u.active }); this.list.reload(); this.loadLimits(); } catch (e) { this.toast.error(e); } }
   resetPwd(u: any) { this.accUser.set(u); this.accResult.set(null); this.accEndpoint.set(`/admin/users/${u.id}/reset-password`); this.accOpen.set(true); }
   async resetMfa(u: any) { if (!confirm(`Desativar a autenticação em dois fatores de ${u.name}?`)) return; try { await this.api.post(`/admin/users/${u.id}/reset-mfa`); this.toast.success('MFA redefinido.'); this.list.reload(); } catch (e) { this.toast.error(e); } }
 }
