@@ -54,7 +54,7 @@ export async function askAI(user: AuthUser, question: string, opts: { mode?: Mod
   const started = Date.now()
   try {
     const out = await runLoop({ provider, key: key.key, model, system: systemPrompt(company, user, mode, tools.some((t) => t.docs)), history, tools: tools.map((t) => t.def),
-      exec: (name, args) => execTool(tools, name, args, tctx), maxSteps: 7, maxTokens: mode === 'juridico' ? 3000 : 2048 })
+      exec: (name, args) => execTool(tools, name, args, tctx), maxSteps: 6, maxTokens: mode === 'juridico' ? 3000 : 2048 })
     const docs: Source[] = [...tctx.docsUsed.values()].map((d) => ({ type: 'documento', id: d.id, name: d.name, page: d.pages[0] ?? null, pages: [...d.pages].sort((a, b) => a - b) }))
     await logUsage(user, { provider, model, mode, question, status: 'ok', tools: out.calls.map((c) => c.name), docs: docs.map((d: any) => ({ id: d.id, name: d.name })), input: out.inputTokens, output: out.outputTokens, ms: Date.now() - started })
     return { text: out.text || 'Não consegui formular uma resposta com os dados disponíveis.', engine: 'ia', provider: `${PROVIDER_INFO[provider].label} (${PROVIDER_INFO[provider].vendor})`, model, sources: [...tctx.sources, ...docs], mode, usage: { input: out.inputTokens, output: out.outputTokens } }

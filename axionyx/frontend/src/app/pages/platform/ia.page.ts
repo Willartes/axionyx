@@ -64,7 +64,8 @@ import { FMT, num } from '../../core/format';
             </div>
             @if (tests()[p.id]; as t) {
               <div style="font-size:12px;padding:8px 10px;border-radius:8px" [style.background]="t.ok ? '#E8F6EE' : '#FDECEC'" [style.color]="t.ok ? '#145C36' : '#8A1F1F'">
-                {{ t.ok ? 'Funcionando com ' + t.model + ' (' + t.ms + ' ms).' : t.error }}</div>
+                {{ t.ok ? 'Funcionando com ' + t.model + ' (' + t.ms + ' ms).' : t.error }}
+                @if (!t.ok && t.error?.includes('Modelo não encontrado')) { <div style="margin-top:6px;font-weight:600">Clique em "Carregar modelos", escolha um modelo da lista, teste de novo e depois clique em "Salvar configurações".</div> }</div>
             }
           </div>
         }

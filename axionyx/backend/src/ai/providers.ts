@@ -23,13 +23,13 @@ const base = (p: Provider) => ({
   gemini: process.env.AI_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com',
 }[p].replace(/\/+$/, ''))
 
-async function http(p: Provider, url: string, init: { method?: string; headers: Record<string, string>; body?: unknown }, timeoutMs = 90_000): Promise<any> {
+async function http(p: Provider, url: string, init: { method?: string; headers: Record<string, string>; body?: unknown }, timeoutMs = 120_000): Promise<any> {
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), timeoutMs)
   let res: Response
   try {
     res = await fetch(url, { method: init.method || 'POST', headers: { 'content-type': 'application/json', ...init.headers }, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: ctl.signal })
   } catch (e: any) {
-    throw new AiError(e?.name === 'AbortError' ? 'O provedor de IA demorou demais para responder.' : 'Não foi possível falar com o provedor de IA: ' + String(e?.message || e).slice(0, 160), 'rede')
+    throw new AiError(e?.name === 'AbortError' ? `O provedor de IA não respondeu em ${Math.round(timeoutMs / 1000)} s. Tente de novo ou escolha um modelo mais rápido (ex.: versão "flash" ou "mini") no painel da plataforma.` : 'Não foi possível falar com o provedor de IA: ' + String(e?.message || e).slice(0, 160), 'rede')
   } finally { clearTimeout(t) }
   const text = await res.text()
   let j: any = null
@@ -56,11 +56,21 @@ function normalize(history: Turn[]): Turn[] {
   while (out.length && out[0].role !== 'user') out.shift()
   return out
 }
+/**
+ * Raciocínio interno ("thinking") reduzido: para consultar o ERP e redigir a resposta não é preciso raciocínio longo,
+ * e o modo padrão de alguns modelos deixa cada etapa lenta demais (principalmente com ferramentas).
+ */
+function geminiThinking(model: string) {
+  if (/gemini-2\.5/.test(model)) return { thinkingConfig: { thinkingBudget: /pro/.test(model) ? 1024 : 0 } }
+  if (/gemini-(\d+)/.test(model) && Number(/gemini-(\d+)/.exec(model)![1]) >= 3) return { thinkingConfig: { thinkingLevel: 'low' } }
+  return {}
+}
+function openaiReasoning(model: string) { return /^(gpt-5|o\d)/.test(model) ? { reasoning_effort: 'low' } : {} }
 const safeJson = (s: string) => { try { return s ? JSON.parse(s) : {} } catch { return {} } }
 const asText = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v))
 
 export async function runLoop(i: LoopInput): Promise<LoopOutput> {
-  const maxSteps = i.maxSteps ?? 6, maxTokens = i.maxTokens ?? 2048, timeout = i.timeoutMs ?? 90_000
+  const maxSteps = i.maxSteps ?? 6, maxTokens = i.maxTokens ?? 2048, timeout = i.timeoutMs ?? 120_000
   const history = normalize(i.history)
   const calls: LoopOutput['calls'] = []
   let inTok = 0, outTok = 0
@@ -92,7 +102,7 @@ export async function runLoop(i: LoopInput): Promise<LoopOutput> {
     for (let step = 1; step <= maxSteps; step++) {
       const last = step === maxSteps
       const r = await http('openai', `${base('openai')}/v1/chat/completions`, { headers: { authorization: `Bearer ${i.key}` },
-        body: { model: i.model, messages: msgs, max_completion_tokens: Math.max(maxTokens, 4096), ...(tools.length && !last ? { tools } : {}) } }, timeout)
+        body: { model: i.model, messages: msgs, max_completion_tokens: Math.max(maxTokens, 4096), ...openaiReasoning(i.model), ...(tools.length && !last ? { tools } : {}) } }, timeout)
       inTok += r?.usage?.prompt_tokens ?? 0; outTok += r?.usage?.completion_tokens ?? 0
       const m = r?.choices?.[0]?.message ?? {}
       if (m.tool_calls?.length && !last) {
@@ -116,7 +126,7 @@ export async function runLoop(i: LoopInput): Promise<LoopOutput> {
     for (let step = 1; step <= maxSteps; step++) {
       const last = step === maxSteps
       const r = await http('gemini', `${base('gemini')}/v1beta/models/${encodeURIComponent(i.model)}:generateContent`, { headers: { 'x-goog-api-key': i.key },
-        body: { systemInstruction: { parts: [{ text: i.system }] }, contents, ...(decl.length && !last ? { tools: [{ functionDeclarations: decl }] } : {}), generationConfig: { maxOutputTokens: Math.max(maxTokens, 4096) } } }, timeout)
+        body: { systemInstruction: { parts: [{ text: i.system }] }, contents, ...(decl.length && !last ? { tools: [{ functionDeclarations: decl }] } : {}), generationConfig: { maxOutputTokens: Math.max(maxTokens, 4096), ...geminiThinking(i.model) } } }, timeout)
       inTok += r?.usageMetadata?.promptTokenCount ?? 0; outTok += (r?.usageMetadata?.candidatesTokenCount ?? 0) + (r?.usageMetadata?.thoughtsTokenCount ?? 0)
       const parts: any[] = r?.candidates?.[0]?.content?.parts ?? []
       const fcs = parts.filter((p) => p.functionCall)

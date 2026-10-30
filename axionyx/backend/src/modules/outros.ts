@@ -266,7 +266,7 @@ router.post('/api/assistant/ask', {}, async (ctx) => {
       const items = await insights(id, { finance: can(ctx.user, 'financeiro.ver') })
       return { text: items.length ? items.map((i) => `• ${i.text}`).join('\n') : 'Nenhum alerta relevante no momento.', link: 'ia-insights' }
     }
-    return { text: 'Posso responder sobre: por que o lucro ou as vendas caíram (pré-diagnóstico), vendas de hoje ou do mês, estoque abaixo do mínimo, títulos vencidos, condicionais em aberto, aniversariantes, produtos mais vendidos e um resumo de alertas. (Assistente baseado em regras — integração com modelo de linguagem pendente de configuração.)' }
+    return { text: 'Posso responder sobre: por que o lucro ou as vendas caíram (pré-diagnóstico), vendas de hoje ou do mês, estoque abaixo do mínimo, títulos vencidos, condicionais em aberto, aniversariantes, produtos mais vendidos e um resumo de alertas. (Motor de regras. Para perguntas livres e leitura de documentos, use o motor IA, quando a empresa tiver a IA generativa ativada.)' }
   }
   const r = await answer()
   return { ...r, engine: 'regras', notice, at: new Date().toISOString() }

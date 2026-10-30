@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.13.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.13.1.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.13.0: IA generativa opcional (Claude, ChatGPT, Gemini)"
+git commit -m "AXIONYX 1.13.1: IA mais rapida (raciocinio reduzido) e modelo Gemini atualizado"
 git push origin main
 ```
 
@@ -46,6 +46,8 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 **1.10.1**: só frontend (trilha de navegação clicável e pesquisa no celular) e número de versão — nenhuma migração, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba).
 
 **1.10.2**: nova migração `017_seguranca.sql` (aplicada sozinha). Só **acrescenta colunas** (convite pendente em `user_companies`, último passo do MFA em `users`); todos os vínculos atuais continuam ativos. Variável opcional `TRUST_PROXY_HOPS` (padrão 1, correto para o Railway; use 2 se ligar o proxy do Cloudflare). Recomendado: depois do deploy, gere os arquivos de travamento de versões com `npm install` dentro de `axionyx/backend` e `axionyx/frontend` e faça commit dos `package-lock.json`. Usuários com "Lembrar-me" precisarão entrar de novo uma vez.
+
+**1.13.1**: nenhuma migração nova. Ajuste de velocidade da IA generativa.
 
 **1.13.0**: migração 018 (só cria tabelas: IA, leitura de documentos e consultas ao jurídico). Recomendado criar `ENCRYPTION_KEY` no Railway antes de cadastrar chaves de IA. Passo a passo em `docs/IA.md`.
 

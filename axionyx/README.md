@@ -298,6 +298,11 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.13.1 — IA mais rápida e modelo padrão do Gemini atualizado
+- Raciocínio interno reduzido nas consultas (Gemini 3: nível "low"; Gemini 2.5: orçamento mínimo; OpenAI gpt-5 e série o: esforço "low"), o que evita estouro de tempo quando a IA usa as ferramentas do sistema.
+- Tempo máximo por etapa de 120 s, com mensagem que sugere um modelo mais rápido.
+- Modelo padrão do Gemini: `gemini-3.8-flash` (o 2.5 não aceita mais contas novas). Ao testar um modelo inexistente, o painel orienta a usar "Carregar modelos".
+
 ### 1.13.0 — IA generativa opcional na AXIA (Claude, ChatGPT ou Gemini)
 - **Dois motores**: cada usuário escolhe na AXIA entre o motor de regras (padrão, nada sai do servidor) e a IA generativa.
 - **Plataforma** (Minha Carteira › Inteligência Artificial): chaves da Anthropic, OpenAI e Google cifradas no banco (AES-256-GCM; nunca voltam ao navegador), escolha do provedor oferecido, modelo (com lista carregada da própria conta), teste de conexão, liberação e limite mensal por empresa.

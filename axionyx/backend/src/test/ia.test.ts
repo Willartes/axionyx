@@ -250,8 +250,8 @@ test('OpenAI e Gemini: mesmo fluxo com o formato de cada provedor', async () => 
     const r = await call('POST', '/api/assistant/ask', { token: A, body: { question: 'Como estão as vendas?', engine: 'ia' } })
     assert.equal(r.body.engine, 'ia', JSON.stringify(r.body)); assert.match(r.body.text, /faturamento/); assert.match(r.body.provider, p === 'openai' ? /ChatGPT/ : /Gemini/)
     assert.equal(seen.length, 2); assert.ok(seen.every((s) => s.provider === p))
-    if (p === 'gemini') { assert.equal(seen[1].body.contents[1].parts[0].thoughtSignature, 'sig-1'); assert.ok(seen[0].body.tools[0].functionDeclarations.find((t: any) => t.name === 'empresa').parameters === undefined) }
-    if (p === 'openai') assert.equal(seen[1].body.messages.at(-1).role, 'tool')
+    if (p === 'gemini') { assert.equal(seen[1].body.contents[1].parts[0].thoughtSignature, 'sig-1'); assert.equal(seen[0].body.generationConfig.thinkingConfig.thinkingLevel, 'low'); assert.ok(seen[0].body.tools[0].functionDeclarations.find((t: any) => t.name === 'empresa').parameters === undefined) }
+    if (p === 'openai') { assert.equal(seen[1].body.messages.at(-1).role, 'tool'); assert.equal(seen[0].body.reasoning_effort, 'low') }
   }
   await call('PUT', '/api/platform/ai', { token: OWNER, body: { provider: 'anthropic' } })
 })

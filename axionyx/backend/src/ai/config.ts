@@ -13,7 +13,7 @@ export const PROVIDERS: Provider[] = ['anthropic', 'openai', 'gemini']
 export const PROVIDER_INFO: Record<Provider, { label: string; vendor: string; env: string; defaultModel: string; console: string }> = {
   anthropic: { label: 'Claude', vendor: 'Anthropic', env: 'ANTHROPIC_API_KEY', defaultModel: 'claude-sonnet-5-5', console: 'https://console.anthropic.com' },
   openai: { label: 'ChatGPT', vendor: 'OpenAI', env: 'OPENAI_API_KEY', defaultModel: 'gpt-5-mini', console: 'https://platform.openai.com' },
-  gemini: { label: 'Gemini', vendor: 'Google', env: 'GEMINI_API_KEY', defaultModel: 'gemini-2.5-flash', console: 'https://aistudio.google.com' },
+  gemini: { label: 'Gemini', vendor: 'Google', env: 'GEMINI_API_KEY', defaultModel: 'gemini-3.8-flash', console: 'https://aistudio.google.com' },
 }
 
 // ---------- cifragem das chaves ----------
