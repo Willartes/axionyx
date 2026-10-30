@@ -298,6 +298,16 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.13.0 — IA generativa opcional na AXIA (Claude, ChatGPT ou Gemini)
+- **Dois motores**: cada usuário escolhe na AXIA entre o motor de regras (padrão, nada sai do servidor) e a IA generativa.
+- **Plataforma** (Minha Carteira › Inteligência Artificial): chaves da Anthropic, OpenAI e Google cifradas no banco (AES-256-GCM; nunca voltam ao navegador), escolha do provedor oferecido, modelo (com lista carregada da própria conta), teste de conexão, liberação e limite mensal por empresa.
+- **Empresa** (Administração › Inteligência Artificial): ativação com aceite registrado, documentos permitidos, pastas bloqueadas, uso do mês e auditoria das perguntas.
+- **Ferramentas com as permissões do usuário**: vendas, pré-diagnóstico do lucro, DRE, contas, estoque, mais vendidos, alertas, processos e documentos. Somente consulta. Prontuário, dados clínicos e salários nunca são enviados.
+- **Leitura de documentos sem dependências novas**: PDF com texto (inclusive fontes Unicode), Word, Excel, CSV, XML/NF-e e texto; busca em português com citação de documento e página.
+- **Consulta jurídica**: pré-análise estruturada a partir dos documentos da empresa, alerta de casos de risco e botão "Encaminhar ao jurídico" (nova tela Intelligence › Consultas ao Jurídico).
+- Limite mensal, chave recusada ou provedor fora do ar: a AXIA responde pelo motor de regras, com aviso. No ambiente de demonstração, a IA fica desligada.
+- Migração 018 (só cria tabelas). Guia: `docs/IA.md`.
+
 ### 1.12.0 — Pré-diagnóstico do lucro (AXIA)
 - Pergunte à AXIA "Por que meu lucro caiu?" (ou "por que minha margem diminuiu este mês?", "por que as vendas caíram na semana?"). A resposta é um pré-diagnóstico com os seus dados.
 - O motor compara o DRE gerencial de dois períodos e decompõe a variação do resultado em causas que **somam exatamente** a diferença: movimento (nº de vendas), ticket médio, margem, devoluções, cada grupo de despesas e o resultado financeiro.

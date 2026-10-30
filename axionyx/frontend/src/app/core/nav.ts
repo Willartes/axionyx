@@ -11,6 +11,7 @@ export const NAV: NavSection[] = [
     { id: 'saas-planos', label: 'Planos', icon: 'tag', sa: 'carteira.ver' },
     { id: 'saas-gateway', label: 'Mercado Pago', icon: 'credit-card', sa: 'carteira.ver' },
     { id: 'plataforma-email', label: 'E-mail de convites', icon: 'mail', sa: 'carteira.configurar', isNew: true },
+    { id: 'plataforma-ia', label: 'Inteligência Artificial', icon: 'bot', sa: 'carteira.configurar', isNew: true },
     { id: 'plataforma-equipe', label: 'Equipe da Plataforma', icon: 'user-cog', sa: 'plataforma.equipe' },
   ]},
   { title: 'CORE', items: [
@@ -58,6 +59,7 @@ export const NAV: NavSection[] = [
     { id: 'pesquisa-operacional', label: 'Pesquisa Operacional', icon: 'git-branch', perm: 'dashboard.ver' },
     { id: 'simulacoes', label: 'Simulações', icon: 'layers', perm: 'dashboard.ver' },
     { id: 'ia-insights', label: 'IA Insights', icon: 'axionyx', perm: 'dashboard.ver' },
+    { id: 'consultas-juridicas', label: 'Consultas ao Jurídico', icon: 'scale', isNew: true },
   ]},
   { title: 'PLATFORM', items: [
     { id: 'integracoes', label: 'Integrações', icon: 'plug', perm: 'integracoes.ver', alertKey: 'integration_errors' },
@@ -71,6 +73,7 @@ export const NAV: NavSection[] = [
     { id: 'admin-modulos', label: 'Módulos', icon: 'package', perm: 'admin.empresas' },
     { id: 'minha-assinatura', label: 'Minha assinatura', icon: 'credit-card', billing: true },
     { id: 'configuracoes', label: 'Configurações', icon: 'settings' },
+    { id: 'inteligencia-artificial', label: 'Inteligência Artificial', icon: 'bot', perm: 'config.editar', isNew: true },
     { id: 'logs', label: 'Logs', icon: 'scroll-text', perm: 'auditoria.ver' },
   ]},
 ];
@@ -101,7 +104,7 @@ export const TITLES: Record<string, string[]> = {
   rh: ['Recursos Humanos', 'Dashboard'], colaboradores: ['Recursos Humanos', 'Colaboradores'], 'colaborador-detail': ['Recursos Humanos', 'Colaboradores', 'Perfil'],
   juridico: ['Jurídico', 'Dashboard'], processos: ['Jurídico', 'Processos'], 'processo-detail': ['Jurídico', 'Processos', 'Detalhes'],
   intelligence: ['Intelligence Center'], forecast: ['Intelligence', 'Previsão de Demanda'], 'estoque-inteligente': ['Intelligence', 'Estoque Inteligente'],
-  'pesquisa-operacional': ['Intelligence', 'Pesquisa Operacional'], simulacoes: ['Intelligence', 'Simulações'], 'ia-insights': ['Intelligence', 'IA Insights'], 'diagnostico-lucro': ['Intelligence', 'Diagnóstico do Lucro'],
+  'pesquisa-operacional': ['Intelligence', 'Pesquisa Operacional'], simulacoes: ['Intelligence', 'Simulações'], 'ia-insights': ['Intelligence', 'IA Insights'], 'diagnostico-lucro': ['Intelligence', 'Diagnóstico do Lucro'], 'consultas-juridicas': ['Intelligence', 'Consultas ao Jurídico'], 'inteligencia-artificial': ['Administração', 'Inteligência Artificial'], 'plataforma-ia': ['Minha Carteira', 'Inteligência Artificial'],
   relatorios: ['Relatórios'], documentos: ['Documentos'], integracoes: ['Platform', 'Integrações'], whatsapp: ['Platform', 'Integrações', 'WhatsApp da empresa'], mensagens: ['Platform', 'Mensagens'], monitoramento: ['Platform', 'Monitoramento'], backup: ['Platform', 'Backup'],
   'admin-empresas': ['Administração', 'Empresas'], 'admin-usuarios': ['Administração', 'Usuários'], 'admin-permissoes': ['Administração', 'Permissões'], 'admin-modulos': ['Administração', 'Módulos'],
   'saas-carteira': ['Minha Carteira', 'Painel'], 'saas-clientes': ['Minha Carteira', 'Clientes e Contratos'], 'saas-auditoria': ['Minha Carteira', 'Auditoria de Assinaturas'],

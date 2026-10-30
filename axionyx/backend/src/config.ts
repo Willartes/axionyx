@@ -43,7 +43,7 @@ export const config = {
 export function secret(name: string | null | undefined): string | undefined {
   if (!name) return undefined
   // ambiente de demonstração: integrações externas sempre desligadas
-  if ((process.env.DEMO_MODE || '').toLowerCase() === 'true' && /^(MP_|WHATSAPP_|RESEND_|BREVO_|SMTP_|EMAIL_|FISCAL_|ECOMMERCE_|LOGISTICS_|CNPJ_LOOKUP)/.test(name)) return undefined
+  if ((process.env.DEMO_MODE || '').toLowerCase() === 'true' && /^(MP_|WHATSAPP_|RESEND_|BREVO_|SMTP_|EMAIL_|FISCAL_|ECOMMERCE_|LOGISTICS_|CNPJ_LOOKUP|ANTHROPIC_|OPENAI_|GEMINI_|AI_)/.test(name)) return undefined
   const v = process.env[name]
   return v && v.trim() ? v.trim() : undefined
 }

@@ -12,6 +12,8 @@ import { FMT } from '../../core/format';
 const DEFAULT_FOLDERS = ['Contratos', 'Fiscal', 'Jurídico', 'RH', 'Fornecedores', 'Geral'];
 const ENTITY: Record<string, string> = { colaborador: 'Colaborador', processo: 'Processo', cliente: 'Cliente', produto: 'Produto' };
 
+const AI_LABEL: Record<string, [string, string]> = { lido: ['Lido', 'badge-success'], sem_texto: ['Sem texto (escaneado)', 'badge-warning'], nao_suportado: ['Formato não lido', 'badge-muted'], bloqueado: ['Dado de saúde: não lido', 'badge-muted'], erro: ['Erro na leitura', 'badge-danger'] };
+
 @Component({
   selector: 'ax-documentos',
   imports: [FormsModule, IconComponent, PagerComponent, StateComponent, ...FMT],
@@ -36,7 +38,7 @@ const ENTITY: Record<string, string> = { colaborador: 'Colaborador', processo: '
           <thead style="position:sticky;top:0"><tr><th>Documento</th><th>Tipo</th><th>Tamanho</th><th>Data</th><th>Pasta / vínculo</th><th>Ações</th></tr></thead>
           <tbody>@for (d of list.items(); track d.id) {
             <tr style="cursor:pointer" [style.background]="sel()?.id === d.id ? '#F0F7FF' : null" (click)="select(d)">
-              <td><div style="display:flex;align-items:center;gap:8px"><ax-icon name="file-text" [size]="14" color="#0875D1" /><span style="font-size:13px">{{ d.name }}</span></div></td>
+              <td><div style="display:flex;align-items:center;gap:8px"><ax-icon name="file-text" [size]="14" color="#0875D1" /><span style="font-size:13px">{{ d.name }}</span>@if (d.ai_status === 'lido') { <span title="Texto lido: a AXIA consegue consultar este documento" style="font-size:10px;color:#18864B;font-weight:600">IA</span> }</div></td>
               <td><span class="badge badge-muted">{{ ext(d) }}</span></td><td class="mono" style="font-size:12px">{{ size(d.size) }}</td><td class="mono" style="font-size:12px">{{ d.created_at | dt }}</td>
               <td><span class="badge badge-cyan">{{ d.folder }}</span> @if (d.entity) { <span class="badge badge-muted">{{ E[d.entity] || d.entity }}</span> }</td>
               <td (click)="$event.stopPropagation()"><div style="display:flex;gap:4px"><button class="btn-ghost" style="padding:3px 5px" (click)="select(d)" aria-label="Ver"><ax-icon name="eye" [size]="13" /></button>
@@ -62,6 +64,10 @@ const ENTITY: Record<string, string> = { colaborador: 'Colaborador', processo: '
           <div style="margin-bottom:8px"><div style="font-size:10px;font-weight:600;color:#647687;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px">{{ r[0] }}</div><div style="font-size:13px;color:#172B3A">{{ r[1] }}</div></div>
         }
         <div style="margin-bottom:8px"><div style="font-size:10px;font-weight:600;color:#647687;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px">Enviado em</div><div style="font-size:13px">{{ d.created_at | dtt }}</div></div>
+        <div style="margin-bottom:8px"><div style="font-size:10px;font-weight:600;color:#647687;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px">Leitura pela IA</div>
+          <div style="font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="badge" [class]="'badge ' + aiClass(d.ai_status)">{{ aiLabel(d.ai_status) }}</span>@if (d.ai_pages) { <span class="muted" style="font-size:11px">{{ d.ai_pages }} pág.</span> }</div>
+          @if (d.ai_note && d.ai_status !== 'lido') { <div class="muted" style="font-size:11px;margin-top:3px">{{ d.ai_note }}</div> }
+          @if (auth.can('documentos.editar') && d.ai_status !== 'bloqueado') { <a class="link" style="font-size:11px" (click)="reindex(d)">Ler de novo</a> }</div>
         <button class="btn-primary" style="width:100%;justify-content:center;margin-top:14px;font-size:12px" (click)="dl(d)"><ax-icon name="download" [size]="13" /> Baixar</button>
       } @else { <div class="empty-state" style="margin-top:40px">Selecione um documento para ver os detalhes.</div> }
     </div>
@@ -71,6 +77,9 @@ const ENTITY: Record<string, string> = { colaborador: 'Colaborador', processo: '
 export class DocumentosPage implements OnInit, OnDestroy {
   private api = inject(Api); readonly auth = inject(AuthService); private toast = inject(ToastService); private san = inject(DomSanitizer);
   readonly E = ENTITY; size = fmtSize;
+  aiLabel(s: string | null) { return AI_LABEL[s ?? '']?.[0] ?? 'Aguardando leitura'; }
+  aiClass(s: string | null) { return AI_LABEL[s ?? '']?.[1] ?? 'badge-info'; }
+  async reindex(d: any) { try { const r = await this.api.post<any>(`/documents/${d.id}/reindex`); this.toast.success(r.status === 'lido' ? 'Documento lido.' : this.aiLabel(r.status)); await this.list.load(this.list.page()); this.sel.set(this.list.items().find((x: any) => x.id === d.id) ?? d); } catch (e) { this.toast.error(e); } }
   readonly list = new ListState<any>((q) => this.api.get('/documents', q));
   readonly folder = signal(''); readonly extraFolders = signal<string[]>([]); q = ''; newFolder = '';
   readonly sel = signal<any>(null); readonly img = signal<string | null>(null); readonly pdf = signal<SafeResourceUrl | null>(null); readonly text = signal<string | null>(null);

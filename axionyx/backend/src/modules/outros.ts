@@ -1,10 +1,13 @@
-import { router, audit, paged, Where, can, r2, branchScope, today } from '../core/http'
+import { router, audit, paged, Where, can, r2, branchScope, today, rateLimit } from '../core/http'
 import { db } from '../core/db'
 import { crud } from '../core/crud'
 import { v, parse } from '../core/validate'
 import { notFound, unprocessable, forbidden } from '../core/errors'
 import { BALANCE_SQL } from '../services/finance'
 import { profitDiagnosis, diagnosisText, periodFromQuestion, type PeriodKey } from '../services/diagnosis'
+import { askAI, logUsage } from '../ai/assistant'
+import { companyAI } from '../ai/config'
+import { indexDocument } from '../ai/documents'
 
 // ---------- CRM ----------
 crud({ table: 'opportunities', path: '/api/opportunities', entity: 'oportunidade', label: 'Oportunidade', view: 'crm.ver', edit: 'crm.editar', order: 't.updated_at DESC',
@@ -71,7 +74,7 @@ router.get('/api/documents', { perm: 'documentos.ver' }, async (ctx) => {
   const w = new Where([['d.company_id = ?', ctx.user.companyId]])
   w.addIf(ctx.query.folder, 'd.folder = ?', ctx.query.folder).addIf(ctx.query.entity, 'd.entity = ?', ctx.query.entity).addIf(ctx.query.entityId, 'd.entity_id = ?', ctx.query.entityId)
   if (ctx.query.q) w.add('d.name ILIKE ?', `%${ctx.query.q}%`)
-  const res = await paged(db, `SELECT d.id, d.folder, d.name, d.mime, d.size, d.entity, d.entity_id, d.created_at, u.name AS uploaded_by_name FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by ${w.sql} ORDER BY d.created_at DESC`, w.params, ctx.query, 50)
+  const res = await paged(db, `SELECT d.id, d.folder, d.name, d.mime, d.size, d.entity, d.entity_id, d.created_at, u.name AS uploaded_by_name, dt.status AS ai_status, dt.error AS ai_note, dt.pages AS ai_pages FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by LEFT JOIN document_texts dt ON dt.document_id = d.id ${w.sql} ORDER BY d.created_at DESC`, w.params, ctx.query, 50)
   const folders = await db.many(`SELECT folder, count(*)::int AS n FROM documents WHERE company_id = $1 GROUP BY folder ORDER BY folder`, [ctx.user.companyId])
   return { ...res, folders }
 })
@@ -90,6 +93,8 @@ router.post('/api/documents', { perm: 'documentos.editar', maxBody: 15_000_000 }
   const r = await db.one(`INSERT INTO documents(company_id, folder, name, mime, size, content, uploaded_by, entity, entity_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, folder, name, mime, size, created_at`,
     [ctx.user.companyId, folder, name, mime, ctx.rawBody.length, ctx.rawBody, ctx.user.id, entity, entityId])
   await audit(null, ctx, 'documento.enviado', 'document', r.id, { name, folder, size: r.size })
+  // leitura do texto para a busca da IA (em segundo plano; o envio não espera)
+  setImmediate(() => { indexDocument(r.id).catch((e) => console.error('[ia] falha ao ler documento:', e?.message)) })
   return r
 })
 router.get('/api/documents/:id/download', { perm: 'documentos.ver' }, async (ctx) => {
@@ -194,7 +199,21 @@ router.get('/api/intelligence/profit-diagnosis', { perm: ['financeiro.ver', 'con
 
 // ---------- AXIA: assistente por regras (consultas reais; LLM pendente de configuração) ----------
 router.post('/api/assistant/ask', {}, async (ctx) => {
-  const b = parse(v.object({ question: v.string({ min: 2, max: 500 }) }), ctx.body)
+  const b = parse(v.object({ question: v.string({ min: 2, max: 2000 }), engine: v.enum(['regras', 'ia'] as const).optional(), mode: v.enum(['geral', 'juridico'] as const).optional(),
+    history: v.array(v.object({ role: v.enum(['user', 'assistant'] as const), text: v.string({ max: 8000 }) }), { max: 12 }).optional() }), ctx.body)
+  let notice: string | undefined
+  if (b.engine === 'ia') {
+    rateLimit('axia-ia:' + ctx.user.id, 20, 60_000)
+    const st = await companyAI(ctx.user.companyId)
+    if (st.available) {
+      try { return { ...(await askAI(ctx.user, b.question, { mode: b.mode, history: b.history })), at: new Date().toISOString() } }
+      catch (e: any) { notice = `A IA não respondeu (${String(e?.message || e).slice(0, 200)}). Resposta pelo motor de regras:` }
+    } else {
+      notice = `${st.reasonText} Resposta pelo motor de regras:`
+      await logUsage(ctx.user, { engine: 'regras', mode: b.mode ?? 'geral', question: b.question, status: st.reason === 'limite' ? 'limite' : 'fallback', tools: [], docs: [] })
+    }
+  }
+  if (b.question.length > 500) b.question = b.question.slice(0, 500)
   const q = b.question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const id = ctx.user.companyId
   const brl = (n: number) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -250,7 +269,7 @@ router.post('/api/assistant/ask', {}, async (ctx) => {
     return { text: 'Posso responder sobre: por que o lucro ou as vendas caíram (pré-diagnóstico), vendas de hoje ou do mês, estoque abaixo do mínimo, títulos vencidos, condicionais em aberto, aniversariantes, produtos mais vendidos e um resumo de alertas. (Assistente baseado em regras — integração com modelo de linguagem pendente de configuração.)' }
   }
   const r = await answer()
-  return { ...r, engine: 'regras', at: new Date().toISOString() }
+  return { ...r, engine: 'regras', notice, at: new Date().toISOString() }
 })
 
 export const _today = today

@@ -40,7 +40,7 @@ export function demoLinkUrl(): string | null {
 }
 
 /** Variáveis de integrações externas: ignoradas no ambiente de demonstração. */
-const EXTERNAL_KEYS = /^(MP_|WHATSAPP_|RESEND_|BREVO_|SMTP_|EMAIL_|FISCAL_|ECOMMERCE_|LOGISTICS_|CNPJ_LOOKUP)/
+const EXTERNAL_KEYS = /^(MP_|WHATSAPP_|RESEND_|BREVO_|SMTP_|EMAIL_|FISCAL_|ECOMMERCE_|LOGISTICS_|CNPJ_LOOKUP|ANTHROPIC_|OPENAI_|GEMINI_|AI_)/
 export function demoBlocksSecret(name: string): boolean { return demo.enabled && EXTERNAL_KEYS.test(name) }
 
 let guarded = false
@@ -61,7 +61,7 @@ export function isDemoAccount(email?: string | null) { return demo.enabled && !!
 
 /** Ações que a conta de demonstração não pode fazer (protegem a própria conta e evitam uso indevido do ambiente). */
 const BLOCKED = [/^\/api\/auth\/password/, /^\/api\/auth\/mfa\//, /^\/api\/admin\/users/, /^\/api\/admin\/roles/, /^\/api\/admin\/companies/, /^\/api\/admin\/branches/,
-  /^\/api\/integrations/, /^\/api\/whatsapp/, /^\/api\/platform/, /^\/api\/saas/, /^\/api\/settings/, /^\/api\/admin\/export/, /^\/api\/fiscal\/documents\/[^/]+\/(transmit|cancel)/]
+  /^\/api\/integrations/, /^\/api\/whatsapp/, /^\/api\/platform/, /^\/api\/saas/, /^\/api\/settings/, /^\/api\/admin\/export/, /^\/api\/fiscal\/documents\/[^/]+\/(transmit|cancel)/, /^\/api\/ai\//]
 export function demoBlocks(method: string, path: string): boolean {
   if (method === 'GET' && !/^\/api\/admin\/export/.test(path)) return false
   return BLOCKED.some((r) => r.test(path))
