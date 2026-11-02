@@ -338,6 +338,7 @@ router.get('/api/monitor', { perm: 'monitor.ver' }, async (ctx) => {
 
 /** Exportação dos dados da empresa (backup lógico em JSON). Para backup completo, use pg_dump (docs/OPERACAO.md). */
 router.get('/api/admin/export', { perm: 'admin.empresas' }, async (ctx) => {
+  requirePlatform(ctx, 'plataforma.backup')
   const id = ctx.user.companyId
   const tables = ['companies', 'branches', 'roles', 'customers', 'suppliers', 'brands', 'collections', 'categories', 'sizes', 'colors', 'products', 'product_variants', 'stock_balances',
     'sales', 'sale_items', 'sale_payments', 'returns', 'receivables', 'payables', 'financial_accounts', 'financial_transactions', 'conditionals', 'conditional_items', 'consignments', 'consignment_items', 'loyalty_ledger', 'fiscal_documents']
@@ -356,5 +357,7 @@ router.get('/api/admin/export', { perm: 'admin.empresas' }, async (ctx) => {
   return null
 })
 
-router.get('/api/admin/backups', { perm: 'admin.empresas' }, async (ctx) =>
-  db.many(`SELECT id, CASE WHEN EXISTS (SELECT 1 FROM users sx WHERE sx.id = user_id AND sx.is_superadmin) THEN 'Suporte AXIONYX' ELSE user_name END AS user_name, created_at, data FROM audit_log WHERE company_id = $1 AND action = 'backup.exportacao' ORDER BY id DESC LIMIT 50`, [ctx.user.companyId]))
+router.get('/api/admin/backups', { perm: 'admin.empresas' }, async (ctx) => {
+  requirePlatform(ctx, 'plataforma.backup')
+  return db.many(`SELECT id, CASE WHEN EXISTS (SELECT 1 FROM users sx WHERE sx.id = user_id AND sx.is_superadmin) THEN 'Suporte AXIONYX' ELSE user_name END AS user_name, created_at, data FROM audit_log WHERE company_id = $1 AND action = 'backup.exportacao' ORDER BY id DESC LIMIT 50`, [ctx.user.companyId])
+})

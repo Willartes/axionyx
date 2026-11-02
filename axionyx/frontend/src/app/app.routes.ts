@@ -127,7 +127,7 @@ export const routes: Routes = [
       { path: 'whatsapp', ...p('integracoes.ver'), loadComponent: () => import('./pages/platform/whatsapp.page').then((m) => m.WhatsappConfigPage) },
       { path: 'mensagens', ...p(['mensagens.enviar', 'integracoes.ver']), loadComponent: () => import('./pages/platform/platform.pages').then((m) => m.MensagensPage) },
       { path: 'monitoramento', ...p('monitor.ver'), loadComponent: () => import('./pages/platform/platform.pages').then((m) => m.MonitoramentoPage) },
-      { path: 'backup', ...p('admin.empresas'), loadComponent: () => import('./pages/platform/platform.pages').then((m) => m.BackupPage) },
+      { path: 'backup', ...pp('plataforma.backup'), loadComponent: () => import('./pages/platform/backup.page').then((m) => m.PlataformaBackupPage) },
       // Administração
       { path: 'admin-empresas', ...p('admin.empresas'), loadComponent: () => import('./pages/admin/admin.pages').then((m) => m.AdminEmpresasPage) },
       { path: 'admin-usuarios', ...p('admin.usuarios'), loadComponent: () => import('./pages/admin/admin.pages').then((m) => m.AdminUsuariosPage) },
@@ -146,6 +146,7 @@ export const routes: Routes = [
       { path: 'plataforma-ia', ...pp('carteira.configurar'), loadComponent: () => import('./pages/platform/ia.page').then((m) => m.PlataformaIaPage) },
       { path: 'inteligencia-artificial', ...p('config.editar'), loadComponent: () => import('./pages/admin/ia-empresa.page').then((m) => m.IaEmpresaPage) },
       { path: 'consultas-juridicas', loadComponent: () => import('./pages/juridico/consultas.page').then((m) => m.ConsultasJuridicasPage) },
+      { path: 'plataforma-migracao', ...pp('plataforma.migracao'), loadComponent: () => import('./pages/platform/migracao.page').then((m) => m.PlataformaMigracaoPage) },
       { path: 'plataforma-equipe', ...pp('plataforma.equipe'), loadComponent: () => import('./pages/platform/equipe.page').then((m) => m.EquipePage) },
       { path: 'minha-assinatura', loadComponent: () => import('./pages/saas/minha-assinatura.page').then((m) => m.MinhaAssinaturaPage) },
       { path: 'configuracoes', loadComponent: () => import('./pages/admin/configuracoes.page').then((m) => m.ConfiguracoesPage) },

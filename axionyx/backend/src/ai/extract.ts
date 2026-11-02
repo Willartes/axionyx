@@ -52,7 +52,7 @@ function xmlToText(xml: string): string {
 }
 
 // ---------- ZIP (docx/xlsx) ----------
-function unzip(buf: Buffer): Map<string, Buffer> {
+export function unzip(buf: Buffer, filter: RegExp = /\.(xml|rels)$/): Map<string, Buffer> {
   const out = new Map<string, Buffer>()
   let eocd = -1
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66_000); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break }
@@ -63,7 +63,7 @@ function unzip(buf: Buffer): Map<string, Buffer> {
     const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), nlen = buf.readUInt16LE(p + 28), xlen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32), off = buf.readUInt32LE(p + 42)
     const name = buf.subarray(p + 46, p + 46 + nlen).toString('utf8')
     p += 46 + nlen + xlen + clen
-    if (!/\.(xml|rels)$/.test(name) || csize > 60_000_000) continue
+    if (!filter.test(name) || csize > 60_000_000) continue
     const lnl = buf.readUInt16LE(off + 26), lxl = buf.readUInt16LE(off + 28)
     const data = buf.subarray(off + 30 + lnl + lxl, off + 30 + lnl + lxl + csize)
     try { out.set(name, method === 0 ? Buffer.from(data) : method === 8 ? zlib.inflateRawSync(data) : Buffer.alloc(0)) } catch { /* entrada corrompida */ }

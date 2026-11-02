@@ -15,6 +15,7 @@ const PRESETS: { id: string; label: string; desc: string; perms: string[] }[] = 
   { id: 'com', label: 'Comercial', desc: 'Propostas e acompanhamento da carteira', perms: ['carteira.ver', 'carteira.propostas'] },
   { id: 'fin', label: 'Financeiro', desc: 'Cobranças, baixas, estornos e suspensões', perms: ['carteira.ver', 'carteira.financeiro'] },
   { id: 'aud', label: 'Auditor', desc: 'Aprova propostas e resolve a fila', perms: ['carteira.ver', 'carteira.aprovar'] },
+  { id: 'imp', label: 'Implantação', desc: 'Migra dados do ERP anterior e faz backups', perms: ['suporte.acessar', 'plataforma.migracao', 'plataforma.backup'] },
 ];
 
 /** Equipe da plataforma: proprietários e agentes operacionais com permissões limitadas. */

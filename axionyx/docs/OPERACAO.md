@@ -34,6 +34,8 @@ Coloque um proxy reverso com HTTPS (nginx, Caddy, balanceador da nuvem) na frent
 Com Docker: `docker compose up -d --build` (veja `docker-compose.yml`; troque as senhas antes).
 
 ## Backup
+
+> A partir da versão 1.15 o AXIONYX tem backup próprio (sistema inteiro ou por empresa, agendado, cifrado, no Cloudflare R2) em Minha Carteira › Backup e Restauração. Veja `docs/BACKUP.md`. O `pg_dump` abaixo continua válido como camada extra.
 Diário, com retenção e teste de restauração periódico:
 ```bash
 pg_dump --format=custom --file=axionyx-$(date +%F).dump "$DATABASE_URL"

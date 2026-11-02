@@ -1,3 +1,5 @@
+import { backupTick } from '../backup/scheduler'
+import { APP_VERSION } from '../modules/nav'
 import { db, tx } from '../core/db'
 import { whatsapp, ecommerce, NotConfiguredError } from './adapters'
 import { sha256 } from '../core/crypto'
@@ -118,7 +120,7 @@ async function billing() {
 
 export function startWorker(intervalMs = 5000) {
   if (timer) return
-  timer = setInterval(() => { processOutbox().catch((e) => console.error('[worker]', e.message)); housekeeping(); billing() }, intervalMs)
+  timer = setInterval(() => { processOutbox().catch((e) => console.error('[worker]', e.message)); housekeeping(); billing(); backupTick(APP_VERSION).catch(() => {}) }, intervalMs)
   timer.unref()
 }
 export function stopWorker() { if (timer) clearInterval(timer); timer = null }

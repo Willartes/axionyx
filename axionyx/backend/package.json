@@ -1,6 +1,6 @@
 {
   "name": "axionyx-backend",
-  "version": "1.14.1",
+  "version": "1.15.0",
   "private": true,
   "description": "AXIONYX ERP — API REST (Node.js + TypeScript + PostgreSQL)",
   "main": "dist/server.js",
@@ -12,6 +12,7 @@
     "seed": "node dist/db/seed.js",
     "seed:demo": "node dist/db/seed.js --demo",
     "reset-password": "node dist/db/reset-password.js",
+    "restore-system": "node dist/scripts/restore-system.js",
     "test": "tsc -p tsconfig.json && node --test --test-concurrency=1 dist/test/*.test.js"
   },
   "engines": { "node": ">=20" },

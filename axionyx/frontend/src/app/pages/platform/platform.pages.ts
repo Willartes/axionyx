@@ -193,39 +193,3 @@ export class MonitoramentoPage implements OnInit {
     ]; });
 }
 
-@Component({
-  selector: 'ax-backup',
-  imports: [IconComponent, ...FMT],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-  <div style="padding:24px">
-    <div style="margin-bottom:24px"><h1 style="font-size:20px;font-weight:700;color:#172B3A;margin-bottom:2px">Central de Backup</h1><p style="font-size:13px;color:#647687">Exportação dos dados da empresa e orientações de backup do banco</p></div>
-    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:20px">
-      <div class="kpi-card"><div style="font-size:11px;font-weight:600;color:#647687;text-transform:uppercase">Última exportação</div><div style="font-size:18px;font-weight:700;color:#18864B">{{ hist()[0] ? (hist()[0].created_at | dtt) : 'nunca' }}</div><div style="font-size:11px;color:#647687">{{ hist()[0]?.user_name || '' }}</div></div>
-      <div class="kpi-card"><div style="font-size:11px;font-weight:600;color:#647687;text-transform:uppercase">Exportações registradas</div><div style="font-size:18px;font-weight:700">{{ hist().length }}</div><div style="font-size:11px;color:#647687">auditadas como operação crítica</div></div>
-      <div class="kpi-card"><div style="font-size:11px;font-weight:600;color:#647687;text-transform:uppercase">Backup do banco</div><div style="font-size:18px;font-weight:700;color:#0875D1">pg_dump</div><div style="font-size:11px;color:#647687">agendado pela infraestrutura (docs/OPERACAO.md)</div></div>
-    </div>
-    <div class="card" style="padding:18px;margin-bottom:16px;display:flex;gap:16px;align-items:center">
-      <div style="flex:1"><div style="font-size:13px;font-weight:700;margin-bottom:4px">Exportar dados da empresa (JSON)</div><div style="font-size:12px;color:#647687">Cadastros, vendas, estoque, financeiro, condicionais e documentos fiscais (sem XML) desta empresa. Útil para portabilidade e conferência; para recuperação completa use o backup do PostgreSQL.</div></div>
-      <button class="btn-primary" style="font-size:12px" [disabled]="busy()" (click)="exportNow()"><ax-icon name="download" [size]="13" /> {{ busy() ? 'Gerando...' : 'Exportar agora' }}</button>
-    </div>
-    <div class="card" style="padding:18px;margin-bottom:16px;font-size:12px;line-height:1.7">
-      <div style="font-size:13px;font-weight:700;margin-bottom:6px">Backup e restauração do PostgreSQL (servidor)</div>
-      <div class="mono" style="background:#0B1F33;color:#E3EFF9;padding:10px 12px;border-radius:6px;font-size:11px;white-space:pre">pg_dump --format=custom --file=axionyx-$(date +%F).dump "$DATABASE_URL"
-pg_restore --clean --if-exists --dbname="$DATABASE_URL" axionyx-AAAA-MM-DD.dump</div>
-      <div class="muted" style="margin-top:6px">Recomendado: dump diário com retenção de 30 dias em armazenamento externo e teste de restauração mensal em ambiente separado.</div>
-    </div>
-    <div class="card" style="overflow:hidden">
-      <table class="data-table" style="width:100%;border-collapse:collapse"><thead><tr><th>Data/Hora</th><th>Tipo</th><th>Usuário</th><th>Tabelas</th></tr></thead>
-        <tbody>@for (h of hist(); track h.id) { <tr><td class="mono" style="font-size:12px">{{ h.created_at | dtt }}</td><td><span class="badge badge-muted">Exportação JSON</span></td><td style="font-size:12px">{{ h.user_name }}</td><td>{{ h.data?.tables }}</td></tr> }
-        @empty { <tr><td colspan="4" class="muted" style="text-align:center;padding:16px">Nenhuma exportação realizada.</td></tr> }</tbody></table>
-    </div>
-  </div>`,
-})
-export class BackupPage implements OnInit {
-  private api = inject(Api); private toast = inject(ToastService);
-  readonly hist = signal<any[]>([]); readonly busy = signal(false);
-  ngOnInit() { this.load(); }
-  async load() { try { this.hist.set(await this.api.get<any[]>('/admin/backups')); } catch { /* */ } }
-  async exportNow() { this.busy.set(true); try { await this.api.download('/admin/export', undefined, 'axionyx-backup.json'); this.toast.success('Exportação gerada.'); this.load(); } catch (e) { this.toast.error(e); } finally { this.busy.set(false); } }
-}

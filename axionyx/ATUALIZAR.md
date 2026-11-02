@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.14.1.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.15.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.14.1: nova chamada principal do site"
+git commit -m "AXIONYX 1.15.0: backup por empresa e Central de Migração"
 git push origin main
 ```
 
@@ -46,6 +46,8 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 **1.10.1**: só frontend (trilha de navegação clicável e pesquisa no celular) e número de versão — nenhuma migração, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba).
 
 **1.10.2**: nova migração `017_seguranca.sql` (aplicada sozinha). Só **acrescenta colunas** (convite pendente em `user_companies`, último passo do MFA em `users`); todos os vínculos atuais continuam ativos. Variável opcional `TRUST_PROXY_HOPS` (padrão 1, correto para o Railway; use 2 se ligar o proxy do Cloudflare). Recomendado: depois do deploy, gere os arquivos de travamento de versões com `npm install` dentro de `axionyx/backend` e `axionyx/frontend` e faça commit dos `package-lock.json`. Usuários com "Lembrar-me" precisarão entrar de novo uma vez.
+
+**1.15.0**: migração `020_backup_migracao.sql` (só **cria tabelas novas**: tarefas, agendamentos e arquivos de backup, lotes e perfis de migração). Nenhuma tabela existente é alterada. As telas Backup e Restauração e Central de Migração passam a ser exclusivas da equipe da plataforma (permissões novas "Backup e restauração" e "Migração de dados"; os proprietários já têm). Antes de usar o backup: crie `BACKUP_ENCRYPTION_KEY` e, de preferência, as variáveis do Cloudflare R2. Passo a passo em `docs/BACKUP.md`. Migração de dados: `docs/MIGRACAO.md`.
 
 **1.14.1**: só o site (texto da página inicial e título da aba). Nenhuma migração.
 

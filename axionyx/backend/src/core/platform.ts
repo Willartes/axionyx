@@ -15,6 +15,8 @@ export const PLATFORM_PERMISSIONS: { key: string; group: string; label: string; 
   { key: 'carteira.aprovar', group: 'Carteira', label: 'Auditar', description: 'Aprovar ou recusar propostas e resolver a fila de auditoria.' },
   { key: 'carteira.financeiro', group: 'Carteira', label: 'Financeiro da carteira', description: 'Gerar cobranças e links, baixa manual, estorno, suspender, reativar e cancelar contratos.' },
   { key: 'carteira.configurar', group: 'Carteira', label: 'Planos e Mercado Pago', description: 'Criar e alterar planos, testar a integração e reprocessar notificações.' },
+  { key: 'plataforma.backup', group: 'Plataforma', label: 'Backup e restauração', description: 'Fazer, agendar, baixar e restaurar backups do sistema e das empresas.' },
+  { key: 'plataforma.migracao', group: 'Plataforma', label: 'Migração de dados', description: 'Importar dados de outros ERPs para as empresas (planilhas e XML de notas) e desfazer importações.' },
   { key: 'plataforma.equipe', group: 'Equipe', label: 'Gerenciar a equipe', description: 'Cadastrar agentes e definir permissões (só pode conceder as que ele mesmo tem).' },
 ]
 export const PLATFORM_KEYS = PLATFORM_PERMISSIONS.map((p) => p.key)

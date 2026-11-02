@@ -10,7 +10,7 @@ axionyx/
 │   ├── migrations/     001_core · 002_catalogo_estoque · 003_vendas_financeiro · 004_fiscal_integracoes_outros · 005_precificacao · 006_whatsapp_empresa · 007_segmentos · 008_hortifruti_adega · 009_site_contatos · 010_mercado_cosmeticos · 011_servicos
 │   └── src/            core (http, auth, validação, RBAC) · services (regras de negócio) · modules (rotas) · integrations · test
 ├── frontend/           Angular 22 (angular.json, proxy para /api)
-├── docs/               INTEGRACOES.md (contratos e variáveis) · OPERACAO.md (instalação, backup, atualização)
+├── docs/               INTEGRACOES.md (contratos e variáveis) · OPERACAO.md (instalação, atualização) · BACKUP.md (backup e restauração) · MIGRACAO.md (dados de outro ERP)
 ├── Dockerfile · docker-compose.yml
 ```
 
@@ -297,6 +297,17 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - **Endurecimento**: cabeçalhos HSTS (produção), Permissions-Policy e CORP; `/api/health` público sem versão (versão em `/api/version`, autenticado); limites de tentativa com limpeza de memória; token de sessão só no `sessionStorage` ("Lembrar-me" guarda apenas o e-mail); arquivos estáticos e nomes de upload validados; conciliação filtrada por empresa; dependências de execução com versão fixa.
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
+
+### 1.15.0 — Backup por empresa e Central de Migração
+- **Backup e Restauração** (Minha Carteira, só para a equipe da plataforma com a nova permissão "Backup e restauração"): backup do **sistema inteiro** ou de **uma empresa isolada**, pelo botão ou por **agendamento** (diário, semanal ou mensal) com retenção.
+- Arquivo `.axbak` comprimido e cifrado (AES-256-GCM, chave `BACKUP_ENCRYPTION_KEY`), guardado no **Cloudflare R2/S3** ou, sem R2 ou se ele falhar, no próprio banco. Download, envio de arquivo, exclusão e e-mail aos proprietários quando um backup agendado falha.
+- **Restaurar empresa** como cópia (nova empresa "restaurada em…") ou substituindo os dados atuais: só o proprietário, digitando SUBSTITUIR, com backup de segurança automático antes.
+- **Sistema inteiro** restaurado num banco novo pelo comando `npm run restore-system` (docs/BACKUP.md).
+- **Central de Migração** (permissão "Migração de dados"): importa do ERP anterior clientes, fornecedores, produtos com grade, saldo de estoque, contas a receber e a pagar, a partir de CSV ou Excel. Colunas reconhecidas automaticamente, sugestão por IA (sem enviar dados dos clientes), perfis por ERP, prévia sem gravar, relatório de erros em CSV, importação atômica e **desfazer em até 7 dias**.
+- **XML de NF-e em lote** (.zip): monta catálogo, clientes, fornecedores, custos e o **histórico de vendas** com as datas originais, sem mexer em estoque nem financeiro; ignora canceladas e repetidas.
+- A exportação JSON antiga (Administração) passa a exigir a permissão de backup da plataforma.
+- Modelo de equipe "Implantação" (migração + backup + acesso às empresas).
+- Migração 020 (só cria tabelas).
 
 ### 1.14.1 — Nova chamada principal do site
 - Chamada principal: "Seu ERP mostra que a margem caiu. O AXIONYX ajuda a entender por quê — e o que fazer a seguir.", com subtítulo deixando claro que o AXIONYX é o próprio ERP.
