@@ -310,12 +310,12 @@ import { AuthService } from '../../core/auth.service';
   <div class="hero" id="inicio">
     <div class="wrap">
       <span class="eyebrow"><ax-icon name="axionyx" [size]="14" /> ERP com inteligência comercial para varejo e serviços</span>
-      <h1>Pare de decidir no achismo. <em>Venda mais</em> com um ERP que mostra o que comprar, quanto cobrar e quem chamar.</h1>
-      <p class="lead">O AXIONYX une PDV, estoque, financeiro e fiscal a uma central de inteligência<span class="d-only"> que prevê a demanda, sugere a reposição, calcula o preço certo e aponta oportunidades de venda</span> — tudo com os dados reais da sua loja.</p>
+      <h1>Seu ERP mostra que a margem caiu. <em>O AXIONYX ajuda a entender por quê</em> — e o que fazer a seguir.</h1>
+      <p class="lead">O AXIONYX é o ERP completo — PDV, estoque, financeiro e fiscal — que transforma cada queda de margem em causas com valor em reais<span class="d-only">: custo que subiu, desconto, mix, movimento ou despesas</span>, e aponta por onde começar. Tudo com os dados reais da sua empresa.</p>
       <div class="hero-ctas">
         <a class="btn btn-blue" href="#contato" (click)="go($event, 'contato')">Agendar demonstração <ax-icon name="arrow-right" [size]="17" /></a>
         @if (demoHref(); as d) { <a class="btn btn-ghost-light" [href]="d"><ax-icon name="play" [size]="17" /> Acessar a demonstração</a> }
-        @else { <a class="btn btn-ghost-light" href="#inteligencia" (click)="go($event, 'inteligencia')"><ax-icon name="brain" [size]="17" /> Ver a inteligência em ação</a> }
+        @else { <a class="btn btn-ghost-light" href="#inteligencia" (click)="go($event, 'inteligencia')"><ax-icon name="brain" [size]="17" /> Ver como funciona o diagnóstico</a> }
       </div>
       <div class="checks">
         @for (c of heroChecks; track c) { <span><ax-icon name="check-circle-2" [size]="16" color="#4FC3E8" /> {{ c }}</span> }
@@ -535,13 +535,13 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
     { icon: 'user-x', title: 'Cliente que não volta', text: 'Sem saber quem sumiu, a loja depende só de quem passa na porta.', fix: 'Segmentos, cashback e WhatsApp com consentimento' },
   ];
   readonly intel = [
+    { icon: 'activity', title: 'Diagnóstico da margem', text: 'Quando o lucro cai, o sistema mostra quanto veio de custo, desconto, mix, movimento e despesas — com os produtos e as filiais por trás e o que fazer primeiro.' },
     { icon: 'trending-up', title: 'Previsão de demanda', text: 'Cinco métodos estatísticos comparados por backtest; o sistema recomenda o mais preciso e mostra o intervalo de confiança.' },
     { icon: 'flask-conical', title: 'Reposição inteligente', text: 'Sugestão por ritmo de venda, prazo do fornecedor e cobertura desejada — e o pedido de compra sai em um clique.' },
     { icon: 'git-branch', title: 'Mix de compra otimizado', text: 'Pesquisa operacional: com o orçamento que você tem, quais itens comprar para maximizar a margem esperada.' },
     { icon: 'layers', title: 'Simulador de cenários', text: 'Teste volume, preço, custo e inadimplência e veja o impacto no lucro antes de decidir.' },
     { icon: 'calculator', title: 'Precificação inteligente', text: 'Custos fixos e variáveis, margem de contribuição, markup, ponto de equilíbrio e margem de segurança por produto.' },
     { icon: 'calendar-days', title: 'Agenda que enche sozinha', text: 'Para clínicas e salões: horários ociosos, clientes que passaram do retorno habitual, faltas e pacotes parados — com convite pelo WhatsApp em um clique.' },
-    { icon: 'axionyx', title: 'Central de insights', text: 'Estoque parado, curva ABC, inadimplência e aniversariantes do mês, sempre com a evidência por trás.' },
     { icon: 'message-circle', title: 'Relacionamento que vende', text: 'Segmentos automáticos, cashback e mensagens pelo WhatsApp oficial para quem autorizou.' },
   ];
   readonly shows = [
@@ -613,7 +613,7 @@ export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   readonly demoUrl = signal<string | null>(null);
   readonly demoHref = computed(() => (this.demoUrl() ? this.demoUrl() + '/login?entrar=1' : null));
   ngOnInit() {
-    this.doc.title = 'AXIONYX — ERP com inteligência para o varejo vender mais';
+    this.doc.title = 'AXIONYX - ERP';
     // no ambiente de demonstração, a página inicial vai direto para o login
     this.api.get<any>('/public/demo').then((d) => {
       if (d?.demo) { this.router.navigateByUrl('/login'); return; }

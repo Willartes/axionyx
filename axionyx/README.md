@@ -298,6 +298,10 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.14.1 — Nova chamada principal do site
+- Chamada principal: "Seu ERP mostra que a margem caiu. O AXIONYX ajuda a entender por quê — e o que fazer a seguir.", com subtítulo deixando claro que o AXIONYX é o próprio ERP.
+- Card "Diagnóstico da margem" na seção de inteligência; título da aba: "AXIONYX - ERP".
+
 ### 1.14.0 — Limites de usuários e filiais por plano
 - Os campos "Máx. usuários" e "Máx. filiais" do plano passam a valer: criar, convidar ou reativar além do limite é bloqueado com mensagem clara.
 - Contam os usuários ativos e os convites pendentes (não contam desativados nem a equipe da plataforma); filiais ativas.
