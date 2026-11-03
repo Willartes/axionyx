@@ -90,7 +90,7 @@ Para uma empresa real: `ADMIN_EMAIL=... COMPANY_NAME=... npm run seed` (a senha 
 |---|---|---|
 | Autorização de NF-e/NFC-e na SEFAZ | Documento validado e armazenado como **"Pendente de configuração"**, marcado **"Sem valor fiscal"**; nunca é exibido como autorizado | Contratar provedor fiscal homologado + certificado digital A1 e CSC; `FISCAL_PROVIDER`, `FISCAL_PROVIDER_URL`, `FISCAL_PROVIDER_TOKEN` |
 | Envio de WhatsApp | Mensagens registradas como "pendente de configuração" ou "sem consentimento"; nada é enviado | Conta na WhatsApp Business Platform (Cloud API oficial). O administrador informa número, Phone Number ID, WABA ID, token permanente e App Secret em **Integrações › WhatsApp** (um número por empresa); modelos aprovados na Meta |
-| Loja virtual (catálogo, estoque, pedidos) | Eventos na fila "aguardando configuração"; webhook recusado | `ECOMMERCE_API_URL`, `ECOMMERCE_API_TOKEN`, `ECOMMERCE_WEBHOOK_SECRET` |
+| Loja virtual (catálogo, estoque, pedidos, cancelamentos, estornos) | Eventos na fila "aguardando configuração"; webhook recusado | O administrador da empresa informa endereço e token da API da loja em **Integrações › Loja virtual › Configurar** (uma loja por empresa); a plataforma define `ECOMMERCE_WEBHOOK_SECRET` |
 | Cotação de frete e etiquetas | Envio registrado manualmente | `LOGISTICS_API_URL`, `LOGISTICS_API_TOKEN` |
 | Modelo de linguagem para a AXIA | Assistente responde por regras com consultas reais | Não implementado |
 | Open Finance / APIs bancárias | Conciliação por arquivo OFX/CSV | Não implementado |
@@ -297,6 +297,16 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - **Endurecimento**: cabeçalhos HSTS (produção), Permissions-Policy e CORP; `/api/health` público sem versão (versão em `/api/version`, autenticado); limites de tentativa com limpeza de memória; token de sessão só no `sessionStorage` ("Lembrar-me" guarda apenas o e-mail); arquivos estáticos e nomes de upload validados; conciliação filtrada por empresa; dependências de execução com versão fixa.
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
+
+### 1.16.0 — Loja virtual por empresa
+- **Cada empresa com a sua loja**: endereço e token da API da loja cadastrados em Integrações › Loja virtual › **Configurar** pelo administrador da empresa (ou pela equipe da plataforma dentro da empresa). O token fica cifrado (AES-256-GCM) e nunca volta ao navegador.
+- O envio de produtos e estoque usa as credenciais da empresa dona de cada evento: nada de uma empresa vai para a loja de outra. Sem loja cadastrada, os eventos ficam "aguardando configuração". As variáveis `ECOMMERCE_API_URL` e `ECOMMERCE_API_TOKEN` deixam de existir.
+- **Proteção do endereço**: só `https` público; endereços internos (localhost, rede privada, metadados da nuvem, `*.railway.internal`) e redirecionamentos são recusados.
+- **Testar e ativar**: confere a conexão (`GET /health`) e libera os eventos que aguardavam. Filial da loja: os pedidos entram nela e o estoque enviado é o dela.
+- **Webhook**: `"type": "pedido.cancelado"` cancela a venda (estoque, caixa, contas, cashback e comissão revertidos); `"pedido.estornado"` faz estorno total ou devolução parcial por item (volta ao estoque só com `restock: true`). Idempotente. Nota fiscal autorizada, parcela já recebida ou venda já devolvida viram **pendência** (HTTP 202) com aviso no sino, sem nada automático.
+- **Frete**: `shippingFee` entra na venda (acréscimo) e no pagamento; comissão e cashback continuam só sobre os produtos. O documento fiscal recebe o frete em `totais.frete`.
+- Mercado Pago: o botão **Testar** valida o token pelas formas de pagamento da conta (funciona com credencial de teste) e explica 401 (token inválido ou Public Key) e 403.
+- Nenhuma migração nova.
 
 ### 1.15.0 — Backup por empresa e Central de Migração
 - **Backup e Restauração** (Minha Carteira, só para a equipe da plataforma com a nova permissão "Backup e restauração"): backup do **sistema inteiro** ou de **uma empresa isolada**, pelo botão ou por **agendamento** (diário, semanal ou mensal) com retenção.

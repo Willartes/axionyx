@@ -27,7 +27,7 @@ export interface MpClient {
   getAuthorizedPayment(id: string): Promise<{ id: string; preapproval_id: string; status: string; transaction_amount?: number; payment?: { id?: string | number; status?: string } }>
   getChargeback(id: string): Promise<{ id: string; payments: (string | number)[] }>
   refund(paymentId: string, idempotencyKey: string): Promise<void>
-  account(): Promise<{ id: string; nickname?: string; site_id?: string; live: boolean }>
+  account(): Promise<{ id: string; nickname?: string; site_id?: string; live: boolean; methods?: number }>
 }
 
 const apiBase = () => (secret('MP_API_URL') || 'https://api.mercadopago.com').replace(/\/$/, '')
@@ -89,10 +89,16 @@ export const realClient: MpClient = {
   getAuthorizedPayment: (id) => mp('GET', `/authorized_payments/${encodeURIComponent(id)}`),
   getChargeback: (id) => mp('GET', `/v1/chargebacks/${encodeURIComponent(id)}`),
   async refund(paymentId, key) { await mp('POST', `/v1/payments/${encodeURIComponent(paymentId)}/refunds`, {}, { 'X-Idempotency-Key': key }) },
+  /**
+   * Valida o Access Token consultando as formas de pagamento da conta (funciona com credencial de teste e de produção).
+   * Os dados da conta (/users/me) são só complemento: credenciais de teste costumam não ter permissão para essa consulta.
+   */
   async account() {
-    const r = await mp('GET', '/users/me')
+    const methods = await mp('GET', '/v1/payment_methods')
     const token = secret('MP_ACCESS_TOKEN') || ''
-    return { id: String(r.id), nickname: r.nickname, site_id: r.site_id, live: !token.startsWith('TEST-') }
+    let me: any = null
+    try { me = await mp('GET', '/users/me') } catch { me = null }
+    return { id: me?.id ? String(me.id) : '', nickname: me?.nickname, site_id: me?.site_id, live: !token.startsWith('TEST-'), methods: Array.isArray(methods) ? methods.length : 0 }
   },
 }
 

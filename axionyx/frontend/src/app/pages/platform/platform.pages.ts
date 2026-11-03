@@ -11,7 +11,7 @@ import { FMT, STATUS_PIPES, dateTimeBr } from '../../core/format';
 const KIND: Record<string, { icon: string; cat: string; env: string[]; doc: string }> = {
   fiscal: { icon: 'landmark', cat: 'Fiscal', env: ['FISCAL_PROVIDER', 'FISCAL_PROVIDER_URL', 'FISCAL_PROVIDER_TOKEN'], doc: 'Provedor homologado que assina com o certificado A1 da empresa e transmite NF-e/NFC-e à SEFAZ.' },
   whatsapp: { icon: 'message-circle', cat: 'Comunicação', env: [], doc: 'Número próprio desta empresa na WhatsApp Business Platform (Cloud API oficial da Meta), configurado pelo administrador. Fora da janela de 24 h usa modelos aprovados.' },
-  ecommerce: { icon: 'shopping-cart', cat: 'E-commerce', env: ['ECOMMERCE_API_URL', 'ECOMMERCE_API_TOKEN', 'ECOMMERCE_WEBHOOK_SECRET'], doc: 'Adaptador REST genérico: envia catálogo/estoque e recebe pedidos por webhook assinado (HMAC).' },
+  ecommerce: { icon: 'shopping-cart', cat: 'E-commerce', env: [], doc: 'Loja virtual própria desta empresa (endereço e token cadastrados no botão Configurar): envia catálogo e estoque e recebe pedidos, cancelamentos e estornos por webhook assinado.' },
   logistica: { icon: 'truck', cat: 'Logística', env: ['LOGISTICS_API_URL', 'LOGISTICS_API_TOKEN'], doc: 'Cotação de frete e etiquetas via API do agregador logístico contratado.' },
   assistente_ia: { icon: 'bot', cat: 'IA', env: [], doc: 'A AXIA atual responde por regras sobre os dados reais. Conexão com modelo de linguagem ainda não implementada.' },
   banco: { icon: 'building-2', cat: 'Banco', env: [], doc: 'Conciliação por importação de extrato OFX/CSV (Financeiro → Conciliação). Open Finance não implementado.' },
@@ -20,13 +20,13 @@ const ago = (d: string | null) => { if (!d) return '—'; const m = Math.round((
 
 @Component({
   selector: 'ax-integracoes',
-  imports: [IconComponent, StateComponent, PagerComponent, ...FMT, ...STATUS_PIPES],
+  imports: [FormsModule, IconComponent, StateComponent, PagerComponent, ModalComponent, ...FMT, ...STATUS_PIPES],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
   <div style="padding:24px">
     <div style="margin-bottom:24px"><h1 style="font-size:20px;font-weight:700;color:#172B3A;margin-bottom:2px">Integration Hub</h1>
       <p style="font-size:13px;color:#647687">{{ activeCount() }} integração(ões) ativa(s) · fila: {{ d()?.queue?.pending ?? 0 }} pendente(s), {{ d()?.queue?.errors ?? 0 }} com erro, {{ d()?.queue?.waiting ?? 0 }} aguardando configuração · {{ d()?.queue?.sent_24h ?? 0 }} enviados em 24h</p></div>
-    <div class="state-info" style="margin:0 0 16px"><ax-icon name="shield-check" [size]="15" /><div>O WhatsApp é configurado por empresa nesta tela (botão Configurar): o token é cifrado no banco e nunca volta ao navegador. As demais integrações leem as credenciais de variáveis de ambiente do servidor. Sem credenciais, os eventos ficam na fila como "aguardando configuração" e nada é enviado.</div></div>
+    <div class="state-info" style="margin:0 0 16px"><ax-icon name="shield-check" [size]="15" /><div>WhatsApp e loja virtual são configurados por empresa nesta tela (botão Configurar): os tokens são cifrados no banco e nunca voltam ao navegador. As demais integrações leem as credenciais de variáveis de ambiente do servidor. Sem credenciais, os eventos ficam na fila como "aguardando configuração" e nada é enviado.</div></div>
     <ax-state [loading]="!d()" />
     <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px">
       @for (i of d()?.items ?? []; track i.id) {
@@ -47,9 +47,10 @@ const ago = (d: string | null) => { if (!d) return '—'; const m = Math.round((
           @if (auth.can('integracoes.editar') || i.kind === 'whatsapp') {
             <div style="display:flex;gap:6px;margin-top:12px">
               @if (i.kind === 'whatsapp') { <button class="btn-primary" style="font-size:11px;flex:1;justify-content:center" (click)="router.navigateByUrl('/whatsapp')"><ax-icon name="settings" [size]="11" /> Configurar</button> }
-              @if (i.kind === 'ecommerce') { <button class="btn-secondary" style="font-size:11px;flex:1;justify-content:center" [disabled]="i.status !== 'ativo'" (click)="sync(i)"><ax-icon name="refresh-cw" [size]="11" /> Sincronizar catálogo</button> }
-              @if (i.kind === 'ecommerce' && auth.can('integracoes.editar')) { <button class="btn-ghost" style="font-size:11px;flex:1;justify-content:center" (click)="whSecret(i)"><ax-icon name="key" [size]="11" /> Segredo do webhook</button> }
+              @if (i.kind === 'ecommerce') { <button class="btn-primary" style="font-size:11px;flex:1;justify-content:center" (click)="openStore()"><ax-icon name="settings" [size]="11" /> Configurar</button> }
+              @if (i.kind === 'ecommerce' && i.status === 'ativo') { <button class="btn-secondary" style="font-size:11px;flex:1;justify-content:center" (click)="sync(i)"><ax-icon name="refresh-cw" [size]="11" /> Sincronizar</button> }
               @if (i.status === 'ativo') { <button class="btn-ghost" style="font-size:11px;flex:1;justify-content:center" (click)="setStatus(i, 'desativado')">Desativar</button> }
+              @else if (i.kind === 'ecommerce') { }
               @else if (i.kind !== 'whatsapp' || i.credentials_present) { <button class="btn-secondary" style="font-size:11px;flex:1;justify-content:center" [disabled]="!i.credentials_present" [title]="i.credentials_present ? '' : 'Configure as variáveis de ambiente no servidor'" (click)="setStatus(i, 'ativo')">Ativar</button> }
             </div>
           }
@@ -67,7 +68,42 @@ const ago = (d: string | null) => { if (!d) return '—'; const m = Math.round((
       <ax-state [loading]="outbox.loading()" [empty]="!outbox.loading() && !outbox.items().length" emptyText="Fila vazia." />
       <ax-pager [page]="outbox.page()" [pages]="outbox.pages()" [total]="outbox.total()" (go)="outbox.load($event)" />
     </div>
-  </div>`,
+  </div>
+  <ax-modal [(open)]="storeOpen" title="Loja virtual desta empresa" icon="shopping-cart" [width]="600">
+    @if (store(); as st) {
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;gap:8px;align-items:center;font-size:12px">
+          <span class="badge" [class]="'badge ' + (st.status | statusClass)">{{ st.status | statusLabel }}</span>
+          @if (st.testedAt) { <span class="muted">testada {{ st.testedAt | dtt }}{{ st.testResult === 'sem_health' ? ' (loja sem /health: token não confirmado)' : '' }}</span> }
+        </div>
+        @if (st.lastError) { <div style="font-size:12px;color:#C93636">{{ st.lastError }}</div> }
+        <div><label class="field-label">Endereço da API da loja *</label>
+          <input class="input-field" style="width:100%" placeholder="https://api.sualoja.com.br/axionyx" [(ngModel)]="sf.url" [disabled]="!canEdit()" />
+          <div class="muted" style="font-size:11px;margin-top:3px">Endereço base com https. O sistema chama /products, /inventory/{{ '{' }}sku{{ '}' }} e /health a partir dele.</div></div>
+        <div><label class="field-label">Token de acesso da API {{ st.hasToken ? '' : '*' }}</label>
+          <input class="input-field" style="width:100%" type="password" autocomplete="new-password" [placeholder]="st.hasToken ? 'Salvo (' + st.tokenHint + '). Preencha só para trocar.' : 'Cole o token gerado na loja'" [(ngModel)]="sf.token" [disabled]="!canEdit()" /></div>
+        <div><label class="field-label">Filial da loja virtual</label>
+          <select class="input-field" style="width:100%" [(ngModel)]="sf.branchId" [disabled]="!canEdit()"><option value="">Primeira filial (estoque somado de todas)</option>@for (b of st.branches; track b.id) { <option [value]="b.id">{{ b.code }} · {{ b.name }}</option> }</select>
+          <div class="muted" style="font-size:11px;margin-top:3px">Os pedidos entram nesta filial e o estoque enviado à loja é o dela.</div></div>
+        <div style="border-top:1px solid #EEF2F6;padding-top:10px">
+          <div class="field-label">Webhook (a loja avisa o ERP)</div>
+          <div class="mono" style="font-size:11px;background:#F4F7FA;padding:6px 8px;border-radius:4px;word-break:break-all">{{ st.webhookUrl }}</div>
+          <div class="muted" style="font-size:11px;margin-top:4px">Pedidos novos, cancelamentos (<span class="mono">"type": "pedido.cancelado"</span>) e estornos (<span class="mono">"pedido.estornado"</span>), assinados com HMAC-SHA256 no cabeçalho X-Signature.</div>
+          @if (whKey()) { <div class="mono" style="font-size:11px;background:#FFF7E6;padding:6px 8px;border-radius:4px;margin-top:6px;word-break:break-all">{{ whKey() }}</div> }
+          @else if (st.webhookSecretAvailable && canEdit()) { <button class="btn-ghost" style="font-size:11px;margin-top:4px" (click)="whSecret(st)"><ax-icon name="key" [size]="11" /> Mostrar segredo do webhook</button> }
+          @else if (!st.webhookSecretAvailable) { <div style="font-size:11px;color:#C93636;margin-top:4px">A plataforma ainda não definiu ECOMMERCE_WEBHOOK_SECRET: os pedidos da loja não podem ser recebidos.</div> }
+        </div>
+      </div>
+    }
+    <div footer>
+      @if (store()?.hasToken && canEdit()) { <button class="btn-ghost" style="color:#C93636;margin-right:auto" [disabled]="busy()" (click)="removeStore()">Remover credenciais</button> }
+      <button class="btn-secondary" (click)="storeOpen.set(false)">Fechar</button>
+      @if (canEdit()) {
+        <button class="btn-secondary" [disabled]="busy() || !sf.url.trim() || (!store()?.hasToken && !sf.token.trim())" (click)="saveStore()"><ax-icon name="save" [size]="13" /> Salvar</button>
+        <button class="btn-primary" [disabled]="busy() || !store()?.hasToken || dirty()" [title]="dirty() ? 'Salve antes de testar' : ''" (click)="testStore()"><ax-icon name="plug" [size]="13" /> Testar e ativar</button>
+      }
+    </div>
+  </ax-modal>`,
 })
 export class IntegracoesPage implements OnInit {
   private api = inject(Api); readonly auth = inject(AuthService); private toast = inject(ToastService); readonly router = inject(Router);
@@ -79,8 +115,29 @@ export class IntegracoesPage implements OnInit {
   async load() { try { this.d.set(await this.api.get('/integrations')); } catch (e) { this.toast.error(e); } }
   loadOutbox() { this.outbox.query = { status: this.ob() || undefined }; this.outbox.load(1); }
   async setStatus(i: any, status: string) { try { await this.api.put('/integrations/' + i.id, { status }); this.toast.success('Integração atualizada.'); this.load(); } catch (e) { this.toast.error(e); } }
-  async whSecret(i: any) {
-    try { const r: any = await this.api.get(`/integrations/${i.id}/webhook-secret`); prompt('Segredo exclusivo desta loja para assinar o webhook (HMAC-SHA256, cabeçalho X-Signature). Endereço: ' + location.origin + r.url, r.secret); }
+  readonly storeOpen = signal(false); readonly store = signal<any>(null); readonly busy = signal(false); readonly whKey = signal<string | null>(null);
+  sf = { url: '', token: '', branchId: '' };
+  canEdit() { return this.auth.can('integracoes.editar'); }
+  dirty() { const st = this.store(); return !!st && (this.sf.url.trim() !== (st.url || '') || !!this.sf.token.trim() || (this.sf.branchId || '') !== (st.branchId || '')); }
+  private fill(st: any) { this.store.set(st); this.sf = { url: st.url || '', token: '', branchId: st.branchId || '' }; }
+  async openStore() { try { this.whKey.set(null); this.fill(await this.api.get('/ecommerce/config')); this.storeOpen.set(true); } catch (e) { this.toast.error(e); } }
+  private async run(fn: () => Promise<any>, ok?: string) { this.busy.set(true); try { const r = await fn(); if (ok) this.toast.success(ok); return r; } catch (e) { this.toast.error(e); return null; } finally { this.busy.set(false); } }
+  async saveStore() {
+    const r = await this.run(() => this.api.put('/ecommerce/config', { url: this.sf.url.trim(), token: this.sf.token.trim() || undefined, branchId: this.sf.branchId || null }), 'Loja salva. Agora clique em "Testar e ativar".');
+    if (r) { this.fill(r); this.load(); }
+  }
+  async testStore() {
+    const r = await this.run(() => this.api.post('/ecommerce/test'));
+    if (r) { this.fill(r); this.load(); this.loadOutbox(); r.message?.startsWith('Conexão') ? this.toast.success(`Loja conectada e ativada.${r.released ? ` ${r.released} evento(s) liberado(s).` : ''}`) : this.toast.warning(r.message); }
+    else { try { this.fill(await this.api.get('/ecommerce/config')); this.load(); } catch { /* */ } }
+  }
+  async removeStore() {
+    if (!confirm('Remover o endereço e o token da loja desta empresa? Nada mais será enviado até cadastrar de novo.')) return;
+    const r = await this.run(() => this.api.delete('/ecommerce/config'), 'Credenciais removidas.');
+    if (r) { this.fill(r); this.load(); }
+  }
+  async whSecret(st: any) {
+    try { const r: any = await this.api.get(`/integrations/${st.integrationId}/webhook-secret`); this.whKey.set(r.secret); }
     catch (e) { this.toast.error(e); }
   }
   async sync(i: any) { try { const r: any = await this.api.post(`/integrations/${i.id}/sync-products`); this.toast.success(`${r.queued} produto(s) enfileirado(s).`); this.loadOutbox(); } catch (e) { this.toast.error(e); } }

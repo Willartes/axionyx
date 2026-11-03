@@ -30,11 +30,13 @@ export async function buildSalePayload(c: Q, saleId: string, model: '55' | '65')
   let payments = await c.many(`SELECT kind, amount, installments, details FROM sale_payments WHERE sale_id = $1`, [saleId])
   const goodsTotal = r2(items.reduce((acc, i) => acc + Number(i.total), 0))
   const goodsGross = r2(items.reduce((acc, i) => acc + Number(i.unit_price) * Number(i.qty), 0))
+  const freight = r2(Number(s.surcharge ?? 0))
   if (servicesTotal > 0 && Number(s.total) > 0) {
-    // rateia os pagamentos proporcionalmente à parte de mercadorias
-    const ratio = goodsTotal / Number(s.total)
+    // rateia os pagamentos proporcionalmente à parte de mercadorias (o frete acompanha as mercadorias)
+    const goodsDoc = r2(goodsTotal + freight)
+    const ratio = goodsDoc / Number(s.total)
     let acc = 0
-    payments = payments.map((p, k) => { const amt = k === payments.length - 1 ? r2(goodsTotal - acc) : r2(Number(p.amount) * ratio); acc = r2(acc + amt); return { ...p, amount: amt } }).filter((p) => Number(p.amount) > 0)
+    payments = payments.map((p, k) => { const amt = k === payments.length - 1 ? r2(goodsDoc - acc) : r2(Number(p.amount) * ratio); acc = r2(acc + amt); return { ...p, amount: amt } }).filter((p) => Number(p.amount) > 0)
   }
   const emitAddress = Object.keys(s.branch_address || {}).length ? s.branch_address : s.company_address
   return {
@@ -46,7 +48,7 @@ export async function buildSalePayload(c: Q, saleId: string, model: '55' | '65')
       cstCsosn: i.cst_csosn, unidade: i.unit, quantidade: i.qty, valorUnitario: Number(i.unit_price), desconto: Number(i.discount), valorTotal: Number(i.total),
     })),
     pagamentos: payments.map((p) => ({ tPag: TPAG[p.kind] || '99', valor: Number(p.amount), parcelas: p.installments })),
-    totais: servicesTotal > 0 ? { produtos: goodsGross, desconto: r2(goodsGross - goodsTotal), total: goodsTotal } : { produtos: Number(s.subtotal), desconto: Number(s.discount_total), total: Number(s.total) },
+    totais: servicesTotal > 0 ? { produtos: goodsGross, desconto: r2(goodsGross - goodsTotal), frete: freight, total: r2(goodsTotal + freight) } : { produtos: Number(s.subtotal), desconto: Number(s.discount_total), frete: freight, total: Number(s.total) },
     informacoesAdicionais: `Venda nº ${s.number}` + (servicesTotal > 0 ? ` — serviços (R$ ${servicesTotal.toFixed(2)}) não incluídos: documentar por NFS-e municipal` : ''),
     modelo: model,
   }

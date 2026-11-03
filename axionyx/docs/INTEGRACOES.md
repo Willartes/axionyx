@@ -95,25 +95,58 @@ Não há automação por WhatsApp Web, bibliotecas não oficiais ou envio em mas
 
 ---
 
-## 3. E-commerce (adaptador REST genérico)
+## 3. E-commerce (adaptador REST genérico) — uma loja por empresa (versão 1.16)
 
-| Variável | Descrição |
+Cada empresa cadastra a **própria** loja em **Integrações › Loja virtual › Configurar** (administrador da empresa ou equipe da plataforma dentro da empresa):
+
+| Campo | O que colocar |
 |---|---|
-| `ECOMMERCE_API_URL` / `ECOMMERCE_API_TOKEN` | API da loja virtual (ou de um middleware) |
+| Endereço da API | Endereço base, com `https` (ex.: `https://api.sualoja.com.br/axionyx`). O ERP chama `/products`, `/inventory/{sku}` e `/health` a partir dele |
+| Token | Token de acesso da API da loja, enviado como `Authorization: Bearer <token>`. Fica cifrado (AES-256-GCM) e nunca volta ao navegador |
+| Filial | Onde entram os pedidos e de onde sai o estoque enviado (vazio = primeira filial, estoque somado) |
+
+Depois de salvar, **Testar e ativar**: `GET /health` respondeu 2xx → ativa; 404 → ativa avisando que o token não foi confirmado; 401/403 → token recusado, nada é ativado. Credencial nova sempre exige novo teste.
+
+**Segurança do endereço**: só `https`, porta padrão, sem usuário/senha embutidos, resolvendo apenas para IPs públicos (localhost, redes privadas, link-local, metadados da nuvem e `*.railway.internal` são recusados). Redirecionamentos não são seguidos.
+
+| Variável (plataforma) | Descrição |
+|---|---|
 | `ECOMMERCE_WEBHOOK_SECRET` | Segredo da plataforma; cada integração recebe um segredo próprio derivado dele |
 
-**Saída (ERP → loja)**, via fila com reprocessamento automático (backoff exponencial):
-- `PUT /inventory/{sku}` — `{ "sku": "...", "quantity": 10 }` a cada movimento de estoque;
-- `POST /products` / `PUT /products/{externalId}` — produto com variações (`reference`, `name`, `description`, `price`, `active`, `variants[] {sku, barcode, size, color, price, stock}`); só reenvia se o conteúdo mudou (hash).
+`ECOMMERCE_API_URL` e `ECOMMERCE_API_TOKEN` **não são mais usadas** (até a 1.15 havia uma única loja por instalação).
 
-**Entrada (loja → ERP)**: `POST /api/webhooks/ecommerce/{integrationId}`
-- cabeçalho `X-Signature`: HMAC-SHA256 hexadecimal do corpo bruto com o **segredo da própria integração** (Integrações › Segredo do webhook — exclusivo de cada loja; a assinatura de uma loja não vale para outra empresa);
-- corpo:
+**Saída (ERP → loja)**, via fila com reprocessamento automático (backoff exponencial), sempre com as credenciais da empresa dona do evento:
+- `PUT /inventory/{sku}` — `{ "sku": "...", "quantity": 10 }` a cada movimento de estoque (saldo da filial da loja);
+- `POST /products` / `PUT /products/{externalId}` — produto com variações (`reference`, `name`, `description`, `price`, `active`, `variants[] {sku, barcode, size, color, price, stock}`); enviado ao alterar o produto ou o preço e pelo botão Sincronizar; só reenvia se o conteúdo mudou (hash);
+- `GET /health` — opcional, usado só pelo teste de conexão.
+
+**Entrada (loja → ERP)**: `POST /api/webhooks/ecommerce/{integrationId}` (endereço exibido na tela Configurar)
+- cabeçalho `X-Signature`: HMAC-SHA256 hexadecimal do corpo bruto com o **segredo da própria integração** (botão "Mostrar segredo do webhook"); a assinatura de uma loja não vale para outra empresa.
+
+*Pedido novo* (`type` ausente ou `"pedido.criado"`):
 ```json
 { "id": "PED-1001", "customer": { "name": "Fulana", "email": "f@ex.com", "document": "52998224725", "phone": "11999999999" },
-  "items": [{ "sku": "BLU-001-PRE-M", "qty": 1, "price": 129.9 }], "payment": { "kind": "pix", "installments": 1 }, "shippingFee": 0 }
+  "items": [{ "sku": "BLU-001-PRE-M", "qty": 1, "price": 129.9 }], "payment": { "kind": "pix", "installments": 1 }, "shippingFee": 19.9 }
 ```
-- idempotente pelo `id` do pedido (repetições retornam `{ "duplicate": true }`); SKU inexistente ou forma de pagamento não cadastrada geram conflito registrado no log da integração.
+O frete (`shippingFee`) entra na venda como acréscimo e no pagamento (total = itens + frete); comissão e cashback são calculados só sobre os produtos. Idempotente pelo `id` (repetições retornam `{ "duplicate": true }`).
+
+*Cancelamento*:
+```json
+{ "type": "pedido.cancelado", "id": "PED-1001", "eventId": "evt-123", "reason": "cliente desistiu" }
+```
+Cancela a venda: itens voltam ao estoque; caixa, contas a receber, vale-troca, cashback e comissão são revertidos.
+
+*Estorno*:
+```json
+{ "type": "pedido.estornado", "id": "PED-1001", "eventId": "evt-124", "items": [{ "sku": "BLU-001-PRE-M", "qty": 1, "restock": true }] }
+```
+Sem `items` = estorno total (igual ao cancelamento). Com `items` = devolução parcial; o item só volta ao estoque com `"restock": true` (no estorno depois da entrega a mercadoria pode não ter voltado). Pago em cartão: abate as parcelas a receber; se já liquidadas, lança a saída na conta bancária.
+
+Avisos de cancelamento/estorno são idempotentes pelo `eventId` (ou pelo par pedido + tipo + itens). Respostas:
+- `200` — processado (ou `{ "duplicate": true }`);
+- `202` `{ "pending": true, "reason": "..." }` — **não** é desfeito automaticamente e vira pendência no log da integração e no sino: documento fiscal autorizado (cancele ou emita a devolução em Fiscal), parcela já recebida, venda com devolução anterior. A loja não deve reenviar em loop;
+- `404` — pedido não existe no ERP (a loja pode reenviar depois);
+- `401` — assinatura inválida; `422` — corpo inválido ou tipo desconhecido.
 
 ---
 

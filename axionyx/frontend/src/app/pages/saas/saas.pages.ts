@@ -363,7 +363,7 @@ export class SaasPlanosPage implements OnInit {
           }
           <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
             <button class="btn-primary" (click)="test()" [disabled]="!g.configured || testing() || !pc('carteira.configurar')"><ax-icon name="plug" [size]="13" /> Testar conexão</button>
-            @if (acct()) { <span style="font-size:12.5px;align-self:center;color:#18864B">Conectado: conta {{ acct().nickname || acct().id }} ({{ acct().live ? 'produção' : 'teste' }})</span> }
+            @if (acct()) { <span style="font-size:12.5px;align-self:center;color:#18864B">Conectado{{ acct().nickname || acct().id ? ': conta ' + (acct().nickname || acct().id) : '' }} ({{ acct().live ? 'conta de produção' : 'conta de teste' }})</span> }
           </div>
         </div>
         <div class="card" style="padding:16px">

@@ -18,6 +18,7 @@ router.get('/api/nav/badges', {}, async (ctx) => {
       (SELECT count(*)::int FROM legal_cases WHERE company_id = $1 AND next_deadline BETWEEN current_date AND current_date + 7) AS legal_deadlines,
       (SELECT count(*)::int FROM fiscal_documents WHERE company_id = $1 AND status IN ('invalido','erro','rejeitado','contingencia')) AS fiscal_issues,
       (SELECT count(*)::int FROM outbox WHERE company_id = $1 AND status = 'erro') AS integration_errors,
+      (SELECT count(*)::int FROM integration_logs WHERE company_id = $1 AND status = 'pendente' AND topic LIKE 'ecommerce.%' AND created_at > now() - interval '7 days') AS store_pending,
       (SELECT count(*)::int FROM stock_transfers WHERE company_id = $1 AND to_branch_id = $2 AND status = 'enviada') AS transfers_in,
       (SELECT count(*)::int FROM stock_lots WHERE company_id = $1 AND branch_id = $2 AND qty_remaining > 0 AND expiry_date <= current_date
           + COALESCE(NULLIF((SELECT settings->'validade'->>'alertaDias' FROM companies WHERE id = $1), '')::int, 3)) AS expiring_lots,
@@ -52,6 +53,7 @@ router.get('/api/nav/badges', {}, async (ctx) => {
   if (r.waiting_room && can(ctx.user, 'agenda.ver')) notifications.push({ icon: 'armchair', text: `${r.waiting_room} paciente(s) na sala de espera`, link: '/recepcao', tone: 'info' })
   if (r.claims_to_bill && can(ctx.user, 'convenios.ver')) notifications.push({ icon: 'file-stack', text: `${r.claims_to_bill} guia(s) de convênio a faturar`, link: '/convenios', tone: 'info' })
   if (r.batches_late && can(ctx.user, 'convenios.ver')) notifications.push({ icon: 'hourglass', text: `${r.batches_late} lote(s) de convênio com pagamento atrasado`, link: '/convenios', tone: 'warning' })
+  if (r.store_pending && can(ctx.user, 'integracoes.ver')) notifications.push({ icon: 'shopping-cart', text: `${r.store_pending} aviso(s) da loja virtual (cancelamento/estorno) precisam de ação`, link: '/integracoes', tone: 'warning' })
   if (r.integration_errors && can(ctx.user, 'integracoes.ver')) notifications.push({ icon: 'plug', text: `${r.integration_errors} evento(s) de integração com erro`, link: '/integracoes', tone: 'danger' })
   if (platformCan(ctx.user, 'carteira.ver')) {
     const sx = await db.one(`SELECT (SELECT count(*)::int FROM saas_reviews WHERE status = 'aberta') AS saas_reviews,
@@ -78,7 +80,7 @@ router.get('/api/search', {}, async (ctx) => {
 })
 
 /** Verificação de saúde (usada pela tela de abertura). */
-export const APP_VERSION = '1.15.0'
+export const APP_VERSION = '1.16.0'
 /** Verificação pública: só diz se está no ar (sem versão/detalhes, que ajudariam a mapear o sistema). */
 router.get('/api/health', { auth: 'none' }, async () => {
   await db.query('SELECT 1')

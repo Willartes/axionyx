@@ -5,6 +5,7 @@ import { whatsapp, ecommerce, NotConfiguredError } from './adapters'
 import { sha256 } from '../core/crypto'
 import { expireCashback } from '../services/loyalty'
 import { whatsappReady } from '../services/whatsapp'
+import { storeCreds } from '../services/ecommerce'
 import { runBilling } from '../services/billing'
 
 /**
@@ -33,21 +34,29 @@ async function deliver(ev: any) {
       return { id: r.id }
     }
     case 'ecommerce.estoque': {
-      const v = await db.one(`SELECT v.sku, COALESCE(sum(sb.qty),0)::float8 AS qty FROM product_variants v LEFT JOIN stock_balances sb ON sb.variant_id = v.id WHERE v.id = $1 GROUP BY v.sku`, [ev.payload.variantId])
+      // credenciais da loja da PRÓPRIA empresa do evento (nunca de outra empresa nem do servidor)
+      const st = await storeCreds(db, ev.integration_id, ev.company_id)
+      if (!st?.creds) throw new NotConfiguredError('Loja virtual da empresa')
+      const branchId = st.integration.config?.branchId || null
+      const v = await db.one(`SELECT v.sku, COALESCE(sum(sb.qty) FILTER (WHERE $3::uuid IS NULL OR sb.branch_id = $3),0)::float8 AS qty
+                                FROM product_variants v LEFT JOIN stock_balances sb ON sb.variant_id = v.id WHERE v.id = $1 AND v.company_id = $2 GROUP BY v.sku`, [ev.payload.variantId, ev.company_id, branchId])
       if (!v) return { skipped: true }
-      await ecommerce.updateStock(v.sku, Math.max(0, v.qty))
+      await ecommerce.updateStock(st.creds, v.sku, Math.max(0, v.qty))
       return { sku: v.sku, qty: v.qty }
     }
     case 'ecommerce.produto': {
-      const p = await db.one(`SELECT id, code, name, description, sale_price, active, company_id FROM products WHERE id = $1`, [ev.payload.productId])
+      const st = await storeCreds(db, ev.integration_id, ev.company_id)
+      if (!st?.creds) throw new NotConfiguredError('Loja virtual da empresa')
+      const p = await db.one(`SELECT id, code, name, description, sale_price, active, company_id FROM products WHERE id = $1 AND company_id = $2`, [ev.payload.productId, ev.company_id])
       if (!p) return { skipped: true }
-      const variants = await db.many(`SELECT v.id, v.sku, v.barcode, sz.code AS size, co.name AS color, COALESCE(v.sale_price, $2) AS price, COALESCE((SELECT sum(qty) FROM stock_balances WHERE variant_id = v.id),0)::int AS stock
-                                        FROM product_variants v LEFT JOIN sizes sz ON sz.id = v.size_id LEFT JOIN colors co ON co.id = v.color_id WHERE v.product_id = $1 AND v.active`, [p.id, p.sale_price])
+      const variants = await db.many(`SELECT v.id, v.sku, v.barcode, sz.code AS size, co.name AS color, COALESCE(v.sale_price, $2) AS price,
+                                             COALESCE((SELECT sum(qty) FROM stock_balances WHERE variant_id = v.id AND ($3::uuid IS NULL OR branch_id = $3)),0)::int AS stock
+                                        FROM product_variants v LEFT JOIN sizes sz ON sz.id = v.size_id LEFT JOIN colors co ON co.id = v.color_id WHERE v.product_id = $1 AND v.active`, [p.id, p.sale_price, st.integration.config?.branchId || null])
       const payload = { reference: p.code, name: p.name, description: p.description, price: Number(p.sale_price), active: p.active, variants }
       const hash = sha256(JSON.stringify(payload))
       const ext = await db.one(`SELECT external_id, payload_hash FROM external_ids WHERE integration_id = $1 AND entity = 'produto' AND local_id = $2`, [ev.integration_id, p.id])
       if (ext?.payload_hash === hash) return { unchanged: true }
-      const r = await ecommerce.upsertProduct(payload, ext?.external_id)
+      const r = await ecommerce.upsertProduct(st.creds, payload, ext?.external_id)
       const externalId = String(r?.id ?? ext?.external_id ?? p.code)
       await db.query(`INSERT INTO external_ids(company_id, integration_id, entity, local_id, external_id, payload_hash) VALUES ($1,$2,'produto',$3,$4,$5)
                       ON CONFLICT (integration_id, entity, local_id) DO UPDATE SET external_id = EXCLUDED.external_id, payload_hash = EXCLUDED.payload_hash, synced_at = now()`,

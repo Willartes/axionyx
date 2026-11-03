@@ -28,6 +28,8 @@ export interface SaleInput {
   originType?: string
   originId?: string
   externalId?: string
+  /** Frete/acréscimo cobrado na venda (ex.: pedido da loja virtual). Entra no total e no pagamento; não entra em comissão nem cashback. */
+  surcharge?: number
   /** Itens já saíram do estoque (condicional/consignação) */
   skipStock?: boolean
   /** Venda sem pagamento imediato (gera título a receber único) */
@@ -129,7 +131,9 @@ export async function createSale(c: Q, a: Actor, input: SaleInput, ctx?: Ctx) {
     })
   }
   const discountTotal = r2(lineDiscounts + extra)
-  const total = r2(subtotal - discountTotal)
+  const surcharge = type === 'venda' ? r2(input.surcharge ?? 0) : 0
+  if (!(surcharge >= 0) || surcharge > 1_000_000) throw unprocessable('Frete/acréscimo inválido.')
+  const total = r2(subtotal - discountTotal + surcharge)
   const discountPct = subtotal > 0 ? (discountTotal / subtotal) * 100 : 0
   // descontos já aprovados no plano de tratamento não contam para o limite do operador
   const preApproved = r2(lines.reduce((acc, l) => acc + l.preApproved, 0))
@@ -197,10 +201,10 @@ export async function createSale(c: Q, a: Actor, input: SaleInput, ctx?: Ctx) {
 
   const sale = await c.one(
     `INSERT INTO sales(company_id, branch_id, number, type, status, channel, customer_id, seller_id, cash_session_id, subtotal, discount_total, total, cost_total,
-        items_count, notes, origin_type, origin_id, external_id, created_by, discount_authorized_by)
-     VALUES ($1,$2,$3,'venda','concluida',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+        items_count, notes, origin_type, origin_id, external_id, created_by, discount_authorized_by, surcharge)
+     VALUES ($1,$2,$3,'venda','concluida',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
     [a.companyId, a.branchId, number, input.channel ?? 'loja', input.customerId ?? null, sellerId, session?.id ?? null, subtotal, discountTotal, total,
-      r2(costTotal), itemsCount, input.notes ?? null, input.originType ?? null, input.originId ?? null, input.externalId ?? null, a.userId, authorizedBy])
+      r2(costTotal), itemsCount, input.notes ?? null, input.originType ?? null, input.originId ?? null, input.externalId ?? null, a.userId, authorizedBy, surcharge])
   await insertItems(c, a, sale.id, lines)
   if (ageVerifiedBy) await c.query(`UPDATE sales SET age_verified_by = $2, age_verified_at = now() WHERE id = $1`, [sale.id, ageVerifiedBy])
 
@@ -346,6 +350,7 @@ export async function createSale(c: Q, a: Actor, input: SaleInput, ctx?: Ctx) {
 
   // ---------- Fidelidade ----------
   let cashback = 0
+  earnBase = Math.min(earnBase, r2(total - surcharge)) // cashback só sobre os produtos, nunca sobre o frete
   if (input.customerId && earnBase > 0) cashback = await earnCashback(c, a.companyId, input.customerId, sale.id, r2(earnBase), a.userId)
 
   // ---------- Fiscal ----------
@@ -530,7 +535,8 @@ export async function registerReturn(c: Q, a: Actor, input: ReturnInput, ctx?: C
   const allQty = saleItems.reduce((acc, i) => acc + i.qty, 0)
   const returnedQty = saleItems.reduce((acc, i) => acc + i.returned_qty, 0) + lines.reduce((acc, l) => acc + l.qty, 0)
   await c.query(`UPDATE sales SET status = $2 WHERE id = $1`, [s.id, returnedQty >= allQty ? 'devolvida' : 'devolvida_parcial'])
-  const ratio = Number(s.total) > 0 ? total / Number(s.total) : 0
+  const goods = Number(s.total) - Number(s.surcharge ?? 0)
+  const ratio = goods > 0 ? Math.min(1, total / goods) : 0
   const comm = await c.one(`SELECT * FROM commissions WHERE ref_type = 'venda' AND ref_id = $1`, [s.id])
   // comissão do vendedor: só sobre os itens que entraram na base dele (sem profissional e sem pacote)
   const sellerBase = r2(lines.filter((l) => !l.it.professional_id && l.it.kind !== 'pacote').reduce((acc, l) => acc + l.value, 0))

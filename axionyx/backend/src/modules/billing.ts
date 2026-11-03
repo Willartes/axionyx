@@ -463,7 +463,13 @@ router.get('/api/saas/gateway', SA, async (ctx) => {
 router.post('/api/saas/gateway/test', SA, async (ctx) => {
   sa(ctx, 'carteira.configurar')
   if (!mercadopago().configured()) throw unprocessable('Defina MP_ACCESS_TOKEN nas variáveis do servidor (Railway) e reinicie.')
-  try { return await mercadopago().account() } catch (e: any) { throw new HttpError(502, 'gateway', `Falha ao consultar o Mercado Pago: ${e.message}`) }
+  try { return await mercadopago().account() } catch (e: any) {
+    const msg = e.status === 401 ? 'Token inválido ou é a Public Key: copie o Access Token (o mais longo) em Suas integrações › Credenciais.'
+      : e.status === 403 ? `Token válido, mas sem permissão para esta consulta (${String(e.message).replace(/^Mercado Pago HTTP 403: /, '').slice(0, 160)}). Confira se o token é desta aplicação e se as credenciais de produção foram ativadas.`
+      : e.status ? `O Mercado Pago respondeu com erro: ${e.message}`
+      : `Não foi possível conectar ao Mercado Pago (${String(e.message).slice(0, 120)}).`
+    throw new HttpError(502, 'gateway', msg)
+  }
 })
 router.post('/api/saas/gateway/events/:id/reprocess', SA, async (ctx) => {
   sa(ctx, 'carteira.configurar')
