@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { DOCUMENT } from '@angular/common';
 import { LogoComponent } from '../../shared/logo.component';
 import { IconComponent } from '../../shared/icon.component';
+import { WhatsappWidgetComponent } from './whatsapp-widget';
 import { Api } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 
@@ -14,7 +15,7 @@ import { AuthService } from '../../core/auth.service';
  */
 @Component({
   selector: 'ax-landing',
-  imports: [LogoComponent, FormsModule, RouterLink, IconComponent],
+  imports: [LogoComponent, FormsModule, RouterLink, IconComponent, WhatsappWidgetComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     :host { display:block; background:#fff; color:#172B3A; font-family:Inter, system-ui, sans-serif; overflow-x:hidden; }
@@ -489,7 +490,8 @@ import { AuthService } from '../../core/auth.service';
       </div>
     </div>
     <div class="wrap" style="margin-top:28px;border-top:1px solid rgba(255,255,255,.07);padding-top:18px;font-size:12.5px">© {{ year }} AXIONYX · www.axionyxerp.com.br</div>
-  </footer>`,
+  </footer>
+  <ax-whatsapp-widget [hidden]="menu()" />`,
 })
 export class LandingPage implements OnInit, AfterViewInit, OnDestroy {
   private api = inject(Api); private el = inject(ElementRef<HTMLElement>); private doc = inject(DOCUMENT); readonly auth = inject(AuthService); private router = inject(Router);

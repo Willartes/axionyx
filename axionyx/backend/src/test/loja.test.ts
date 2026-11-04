@@ -196,3 +196,16 @@ test('teste do Mercado Pago: valida o token pelas formas de pagamento e explica 
     assert.equal(bad.status, 502); assert.match(bad.body.error.message, /Public Key/)
   } finally { mp.close() }
 })
+
+test('site: número do WhatsApp do botão (padrão, configurável e desligável)', async () => {
+  delete process.env.SITE_WHATSAPP
+  assert.deepEqual((await call('GET', '/api/public/site')).body, { whatsapp: '5519996966329' })
+  process.env.SITE_WHATSAPP = '+55 (11) 98888-7777'
+  assert.equal((await call('GET', '/api/public/site')).body.whatsapp, '5511988887777')
+  process.env.SITE_WHATSAPP = 'off'
+  assert.equal((await call('GET', '/api/public/site')).body.whatsapp, null)
+  delete process.env.SITE_WHATSAPP
+  const r = await call('POST', '/api/public/leads', { body: { name: 'Visitante WhatsApp', phone: '19988887777', consent: true, message: 'Contato pelo botão do WhatsApp do site' } })
+  assert.equal(r.status, 200)
+  assert.equal((await call('POST', '/api/public/leads', { body: { name: 'Sem consentimento', phone: '19988887777', consent: false } })).status, 422)
+})

@@ -261,6 +261,18 @@ router.get('/api/pos/lookup', { perm: 'vendas.criar' }, async (ctx) => {
 // =====================================================================
 // Site institucional: contatos
 // =====================================================================
+/**
+ * Configuração pública do site: número do WhatsApp do botão flutuante (SITE_WHATSAPP, com DDI e DDD, só dígitos).
+ * Padrão: 5519996966329. SITE_WHATSAPP=off esconde o botão.
+ */
+export function siteWhatsapp(): string | null {
+  const raw = (process.env.SITE_WHATSAPP ?? '5519996966329').trim()
+  if (/^(off|false|0|nao|não)$/i.test(raw)) return null
+  const d = onlyDigits(raw)
+  return /^\d{12,13}$/.test(d) ? d : null
+}
+router.get('/api/public/site', { auth: 'none' }, async () => ({ whatsapp: siteWhatsapp() }))
+
 router.post('/api/public/leads', { auth: 'none', maxBody: 20_000 }, async (ctx) => {
   rateLimit('lead:' + ctx.ip, 5, 60 * 60_000)
   const b: any = parse(v.object({ name: v.string({ min: 2, max: 120 }), email: v.email().optional(), phone: v.string({ min: 8, max: 20 }).optional(),

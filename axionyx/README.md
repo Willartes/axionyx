@@ -298,6 +298,12 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
 
+### 1.16.1 — Botão de WhatsApp no site
+- Botão flutuante no canto inferior direito da página de apresentação: o visitante informa nome e WhatsApp, autoriza o contato e a conversa abre no WhatsApp (link oficial `wa.me`) com a mensagem pronta para a Equipe AXIONYX.
+- O contato fica salvo em Contatos do site (com a autorização registrada) e pode virar proposta.
+- Número na variável `SITE_WHATSAPP` (padrão 5519996966329; `off` esconde o botão). Visual e textos próprios do AXIONYX.
+- Nenhuma migração.
+
 ### 1.16.0 — Loja virtual por empresa
 - **Cada empresa com a sua loja**: endereço e token da API da loja cadastrados em Integrações › Loja virtual › **Configurar** pelo administrador da empresa (ou pela equipe da plataforma dentro da empresa). O token fica cifrado (AES-256-GCM) e nunca volta ao navegador.
 - O envio de produtos e estoque usa as credenciais da empresa dona de cada evento: nada de uma empresa vai para a loja de outra. Sem loja cadastrada, os eventos ficam "aguardando configuração". As variáveis `ECOMMERCE_API_URL` e `ECOMMERCE_API_TOKEN` deixam de existir.
