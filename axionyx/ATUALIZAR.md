@@ -5,10 +5,10 @@ Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que cont�
 ```bash
 cd ~/Downloads/axionyx-repo
 git pull                                            # traz o que já está no GitHub
-unzip -o ~/Downloads/axionyx-erp-v1.16.1.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+unzip -o ~/Downloads/axionyx-erp-v1.17.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
 git status                                          # confira: nenhum arquivo .env pode aparecer
 git add -A
-git commit -m "AXIONYX 1.16.1: botão de WhatsApp no site"
+git commit -m "AXIONYX 1.17.0: previsão de demanda com rede neural, semanal ou mensal"
 git push origin main
 ```
 
@@ -46,6 +46,8 @@ O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/mi
 **1.10.1**: só frontend (trilha de navegação clicável e pesquisa no celular) e número de versão — nenhuma migração, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba).
 
 **1.10.2**: nova migração `017_seguranca.sql` (aplicada sozinha). Só **acrescenta colunas** (convite pendente em `user_companies`, último passo do MFA em `users`); todos os vínculos atuais continuam ativos. Variável opcional `TRUST_PROXY_HOPS` (padrão 1, correto para o Railway; use 2 se ligar o proxy do Cloudflare). Recomendado: depois do deploy, gere os arquivos de travamento de versões com `npm install` dentro de `axionyx/backend` e `axionyx/frontend` e faça commit dos `package-lock.json`. Usuários com "Lembrar-me" precisarão entrar de novo uma vez.
+
+**1.17.0**: nenhuma migração e nenhuma variável nova. A Previsão de Demanda passa a usar os 6 métodos do sistema JavaFX (com rede neural) no servidor. Para cada empresa, escolha o período padrão (semanal ou mensal) em Configurações › Previsão de demanda; sem escolher, fica semanal com horizonte de 4 semanas.
 
 **1.16.1**: só o site e uma rota pública. Nenhuma migração. O botão usa o número 5519996966329; para trocar, crie `SITE_WHATSAPP` no Railway (só dígitos, com 55 e DDD) ou `SITE_WHATSAPP=off` para esconder.
 

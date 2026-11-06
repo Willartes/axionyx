@@ -68,6 +68,12 @@ export const DEFAULT_SETTINGS = {
     toleranciaFaltaMin: 15,
     fusoHorario: 'America/Sao_Paulo',
   },
+  /** Previsão de demanda: período padrão da empresa e horizonte sugerido */
+  previsao: {
+    periodo: 'semanal',
+    horizonteSemanas: 4,
+    horizonteMeses: 3,
+  },
   /** Oficina mecânica */
   oficina: {
     valorHora: 120,
@@ -114,6 +120,9 @@ export function sanitizeSettings(input: any): Partial<Settings> {
       } else if (k === 'fusoHorario') {
         if (!/^(America\/[A-Za-z_]+|UTC)$/.test(String(val))) throw new Error('Fuso horário inválido')
         out[section][k] = String(val)
+      } else if (k === 'periodo') {
+        if (!['semanal', 'mensal'].includes(val)) throw new Error('Período da previsão deve ser semanal ou mensal')
+        out[section][k] = val
       } else if (k === 'ambiente') {
         if (!['homologacao', 'producao'].includes(val)) throw new Error('Ambiente fiscal inválido')
         out[section][k] = val

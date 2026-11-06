@@ -1,0 +1,111 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { Api } from './api.service';
+
+export type Stage = 'mfa' | 'context' | 'full';
+export interface Me {
+  user: { id: string; name: string; email: string; mfa_enabled: boolean; is_superadmin: boolean; role: string; isSeller: boolean; maxDiscountPct: number; allBranches: boolean; last_login_at?: string; must_change_password?: boolean; platform_title?: string | null };
+  /** Equipe da plataforma (só superadministradores) */
+  platform?: { owner: boolean; permissions: string[]; title: string | null } | null;
+  demo?: { environment: boolean; account: boolean; resetHour: number } | null;
+  company: { id: string; name: string; trade_name: string | null; cnpj: string | null; color: string; is_demo: boolean; modules: string[]; tax_regime: string; segment?: string };
+  segment?: { id: string; name: string; short: string; icon: string; terms: Record<string, string>; units: string[]; defaultUnit: string };
+  branch: { id: string; code: string; name: string; cnpj: string | null };
+  branches: { id: string; code: string; name: string }[];
+  companies: { id: string; name: string; trade_name: string | null; cnpj: string | null; color: string; role: string; is_demo: boolean }[];
+  permissions: string[];
+  settings: any;
+  /** Assinatura AXIONYX (null = empresa sem contrato) */
+  billing?: { status: string; plan: string | null; price: number; billingMode: string; paidUntil: string | null; graceDays: number; suspendOn: string | null; blocked: boolean; readOnly: boolean;
+    pending: { id: string; amount: number; due_date: string; checkout_url: string | null } | null } | null;
+}
+
+const KEY = 'axionyx.session';
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private api = inject(Api);
+  private router = inject(Router);
+  private session = signal<{ token: string; stage: Stage; remember: boolean } | null>(this.restore());
+  readonly me = signal<Me | null>(null);
+  readonly pendingUser = signal<{ name: string; email: string } | null>(null);
+  readonly maskedEmail = signal<string>('');
+  readonly companies = signal<Me['companies']>([]);
+  readonly selectedCompany = signal<Me['companies'][number] | null>(null);
+  readonly token = computed(() => this.session()?.token ?? null);
+  readonly stage = computed(() => this.session()?.stage ?? null);
+  readonly permissions = computed(() => new Set(this.me()?.permissions ?? []));
+  readonly modules = computed(() => new Set(this.me()?.company?.modules ?? []));
+  /** Módulo ativo na empresa (inclui os recursos do segmento: grade, peso, validade, embalagens, combos, maioridade...). */
+  has(mod: string): boolean { return this.modules().has(mod); }
+  /** Vocabulário do segmento (ex.: "Coleção", "Lote/safra"). */
+  term(key: string, fallback?: string): string { return this.me()?.segment?.terms?.[key] ?? fallback ?? key; }
+
+  private restore() {
+    try {
+      try { localStorage.removeItem(KEY); } catch { /* sessões antigas guardadas no navegador são descartadas */ }
+      const raw = sessionStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  private persist(token: string, stage: Stage, remember: boolean) {
+    const v = { token, stage, remember };
+    this.session.set(v);
+    try {
+      sessionStorage.removeItem(KEY); localStorage.removeItem(KEY);
+      // o token de sessão nunca fica gravado de forma permanente no navegador; "Lembrar-me" guarda só o e-mail
+      sessionStorage.setItem(KEY, JSON.stringify(v));
+    } catch { /* armazenamento indisponível: sessão só em memória */ }
+  }
+  clear() {
+    this.session.set(null); this.me.set(null);
+    try { sessionStorage.removeItem(KEY); localStorage.removeItem(KEY); } catch { /* */ }
+  }
+
+  /** Permissão da equipe da plataforma AXIONYX (proprietário tem todas). */
+  pcan(perm: string): boolean { const pl = this.me()?.platform; return !!pl && (pl.owner || pl.permissions.includes(perm)); }
+
+  can(perm: string | string[]): boolean {
+    const p = this.permissions();
+    if (p.has('*')) return true;
+    return (Array.isArray(perm) ? perm : [perm]).some((x) => p.has(x));
+  }
+
+  readonly invitations = signal<any[]>([]);
+  rememberedEmail(): string { try { return localStorage.getItem('axionyx.email') || ''; } catch { return ''; } }
+  async login(email: string, password: string, remember: boolean): Promise<{ mfaRequired: boolean }> {
+    const r = await this.api.post<any>('/auth/login', { email, password });
+    try { if (remember) localStorage.setItem('axionyx.email', email); else localStorage.removeItem('axionyx.email'); } catch { /* */ }
+    this.persist(r.token, r.mfaRequired ? 'mfa' : 'context', remember);
+    if (r.mfaRequired) { this.maskedEmail.set(r.maskedEmail || ''); return { mfaRequired: true }; }
+    this.pendingUser.set(r.user); this.companies.set(r.companies); this.invitations.set(r.invitations ?? []);
+    return { mfaRequired: false };
+  }
+  async verifyMfa(code: string) {
+    const r = await this.api.post<any>('/auth/mfa', { code });
+    this.persist(r.token, 'context', this.session()?.remember ?? false);
+    this.pendingUser.set(r.user); this.companies.set(r.companies); this.invitations.set(r.invitations ?? []);
+  }
+  async loadCompanies() {
+    const [c, inv] = await Promise.all([this.api.get<Me['companies']>('/auth/companies'), this.api.get<any[]>('/auth/invitations').catch(() => [])]);
+    this.companies.set(c); this.invitations.set(inv); return c;
+  }
+  async answerInvitation(companyId: string, accept: boolean) {
+    const r = await this.api.post<any>(`/auth/invitations/${companyId}`, { accept });
+    this.companies.set(r.companies); this.invitations.set(r.invitations);
+  }
+  requestPasswordReset(email: string) { return this.api.post<{ ok: boolean; emailEnabled: boolean }>('/public/password-reset', { email }); }
+  branchesOf(companyId: string) { return this.api.get<{ id: string; code: string; name: string; cnpj: string | null; address: any }[]>(`/auth/companies/${companyId}/branches`); }
+  async enterContext(companyId: string, branchId: string) {
+    const path = this.stage() === 'full' ? '/auth/switch' : '/auth/context';
+    const r = await this.api.post<any>(path, { companyId, branchId });
+    this.persist(r.token, 'full', this.session()?.remember ?? false);
+    await this.loadMe();
+  }
+  async loadMe() { const me = await this.api.get<Me>('/auth/me'); this.me.set(me); return me; }
+  async logout() {
+    try { if (this.stage() === 'full') await this.api.post('/auth/logout'); } catch { /* sessão já expirada */ }
+    this.clear();
+    this.router.navigateByUrl('/login');
+  }
+}

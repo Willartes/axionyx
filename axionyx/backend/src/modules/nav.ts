@@ -80,7 +80,7 @@ router.get('/api/search', {}, async (ctx) => {
 })
 
 /** Verificação de saúde (usada pela tela de abertura). */
-export const APP_VERSION = '1.16.1'
+export const APP_VERSION = '1.17.0'
 /** Verificação pública: só diz se está no ar (sem versão/detalhes, que ajudariam a mapear o sistema). */
 router.get('/api/health', { auth: 'none' }, async () => {
   await db.query('SELECT 1')

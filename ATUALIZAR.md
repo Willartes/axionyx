@@ -1,0 +1,75 @@
+# Como atualizar o repositório no GitHub com uma nova versão
+
+Use sempre a pasta clonada do GitHub (ex.: `~/Downloads/axionyx-repo`, que contém a pasta `axionyx/`).
+
+```bash
+cd ~/Downloads/axionyx-repo
+git pull                                            # traz o que já está no GitHub
+unzip -o ~/Downloads/axionyx-erp-v1.17.0.zip          # substitui os arquivos alterados (seu .env não vai no zip)
+git status                                          # confira: nenhum arquivo .env pode aparecer
+git add -A
+git commit -m "AXIONYX 1.17.0: previsão de demanda com rede neural, semanal ou mensal"
+git push origin main
+```
+
+O Railway faz o deploy sozinho após o `push`. As migrações novas (`backend/migrations/007..011`) são aplicadas automaticamente quando a API inicia; elas só **acrescentam** tabelas/colunas e ampliam tipos — nenhum dado cadastrado é apagado ou alterado.
+
+**Recomendado antes do push:** faça um backup do banco do Railway (Postgres › Backups › Create backup) — boa prática a cada atualização.
+
+## Novidades da versão 1.5
+- Segmentos Odontologia, Clínica de estética e Salão de beleza e estética: agenda por profissional, serviços e pacotes de sessões, comissão por profissional, prontuário/fichas com consentimento e acesso auditado, odontograma, planos de tratamento e Inteligência de Serviços.
+- Gerente/dono pode ser também profissional (“Eu também atendo”).
+- Nova marca (símbolo de rede conectada) em todo o sistema e no site.
+- Migração `011_servicos.sql`: só acrescenta tabelas e colunas (empresas existentes continuam no segmento atual; para usar os novos recursos, aplique o segmento em Administração › Módulos › Aplicar outro segmento ou cadastre uma nova empresa).
+
+## Novidades da versão 1.4
+- Segmento Mercadinho e conveniência (preço por quantidade/atacarejo, fardos, peso, validade, combos, maioridade).
+- Segmento Cosméticos e perfumaria (tonalidade/volume, atributos, ANVISA, lote/validade, testers, kits, revendedoras).
+
+## Novidades da versão 1.3
+- Site institucional em `/` com link **Axionyx** (canto superior direito) para o sistema e formulário de demonstração.
+- Segmentos de negócio: Moda (convertida, sem perder nada), Hortifrúti/Quitanda, Adega/Bebidas e Varejo geral.
+- Venda por peso, leitura de balança, etiqueta de balança, lotes e validade (FEFO), perdas, embalagens unidade/caixa, combos e controle de maioridade.
+
+**1.5.2**: só frontend (responsividade) e número de versão — nenhuma migração nova, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba) para limpar o cache.
+
+**1.6.0**: nova migração `012_assinaturas.sql`, aplicada sozinha ao iniciar a API. Ela só **cria tabelas novas** (planos, contratos, cobranças, fila de auditoria, notificações do gateway); nenhuma tabela existente é alterada e as empresas atuais continuam funcionando sem bloqueio. Depois do deploy, configure no Railway as variáveis `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET` e `APP_PUBLIC_URL` (passo a passo na tela Minha Carteira › Mercado Pago e em `docs/INTEGRACOES.md`, seção 7).
+
+**1.7.0**: nova migração `013_equipe_plataforma.sql` (aplicada sozinha ao iniciar). Só **acrescenta colunas** na tabela de usuários; nenhum cadastro é alterado, exceto marcar os superadministradores atuais como **proprietários** (mantêm acesso total). Depois do deploy: Minha Carteira › Equipe da Plataforma.
+
+**1.8.0**: nova migração `014_oficina.sql` (aplicada sozinha). Só **cria tabelas** (veículos, ordens de serviço, itens, histórico, lembretes) e **acrescenta colunas** (`products.return_km`, `sale_items.work_order_item_id`); também concede as permissões da oficina aos perfis padrão. Nenhum cadastro existente é alterado. Para usar: crie a empresa com o segmento "Oficina mecânica" ou troque o segmento de uma empresa em Administração › Módulos.
+
+**1.9.0**: nova migração `015_saude.sql` (aplicada sozinha ao iniciar a API). Só **cria tabelas** (convênios, tabela de preços, perfil de saúde do paciente, guias, lotes, documentos clínicos), **acrescenta colunas** (conselho do profissional, nome social/CNS do paciente, dados de convênio e teleconsulta no agendamento, sigilo/CID/sinais vitais no prontuário) e **amplia** as listas de tipos de registro clínico e de comissão. Concede as novas permissões (convênios e documentos clínicos) aos perfis padrão. Registros existentes do prontuário continuam visíveis para a equipe, como antes. Para usar: crie a empresa com o segmento "Clínicas e consultórios de saúde" ou aplique o segmento em Administração › Módulos (os perfis Recepcionista e Gerente da clínica são criados nesse momento).
+
+**1.10.0**: nova migração `016_ativacao_email.sql` (aplicada sozinha). Só **cria tabelas** (`user_tokens`, `email_log`) e **acrescenta** a coluna `users.pending_activation` (falso para todos os usuários atuais). Ninguém perde acesso. Sem as variáveis de e-mail, tudo continua como antes (senha temporária). Para ativar os convites: configure as variáveis da seção 8 de `docs/INTEGRACOES.md` (Resend/Brevo ou SMTP, `EMAIL_FROM` e `APP_PUBLIC_URL`) e confira em Minha Carteira › E-mail de convites.
+
+**1.10.1**: só frontend (trilha de navegação clicável e pesquisa no celular) e número de versão — nenhuma migração, nenhum dado é tocado. Após o deploy, recarregue com Ctrl+Shift+R (no celular, feche e reabra a aba).
+
+**1.10.2**: nova migração `017_seguranca.sql` (aplicada sozinha). Só **acrescenta colunas** (convite pendente em `user_companies`, último passo do MFA em `users`); todos os vínculos atuais continuam ativos. Variável opcional `TRUST_PROXY_HOPS` (padrão 1, correto para o Railway; use 2 se ligar o proxy do Cloudflare). Recomendado: depois do deploy, gere os arquivos de travamento de versões com `npm install` dentro de `axionyx/backend` e `axionyx/frontend` e faça commit dos `package-lock.json`. Usuários com "Lembrar-me" precisarão entrar de novo uma vez.
+
+**1.17.0**: nenhuma migração e nenhuma variável nova. A Previsão de Demanda passa a usar os 6 métodos do sistema JavaFX (com rede neural) no servidor. Para cada empresa, escolha o período padrão (semanal ou mensal) em Configurações › Previsão de demanda; sem escolher, fica semanal com horizonte de 4 semanas.
+
+**1.16.1**: só o site e uma rota pública. Nenhuma migração. O botão usa o número 5519996966329; para trocar, crie `SITE_WHATSAPP` no Railway (só dígitos, com 55 e DDD) ou `SITE_WHATSAPP=off` para esconder.
+
+**1.16.0**: nenhuma migração nova. A loja virtual passa a ser cadastrada por empresa (Integrações › Loja virtual › Configurar); as variáveis `ECOMMERCE_API_URL` e `ECOMMERCE_API_TOKEN` podem ser apagadas do Railway (não são mais lidas). Mantenha `ECOMMERCE_WEBHOOK_SECRET`. Contrato atualizado em `docs/INTEGRACOES.md`, seção 3.
+
+**1.15.0**: migração `020_backup_migracao.sql` (só **cria tabelas novas**: tarefas, agendamentos e arquivos de backup, lotes e perfis de migração). Nenhuma tabela existente é alterada. As telas Backup e Restauração e Central de Migração passam a ser exclusivas da equipe da plataforma (permissões novas "Backup e restauração" e "Migração de dados"; os proprietários já têm). Antes de usar o backup: crie `BACKUP_ENCRYPTION_KEY` e, de preferência, as variáveis do Cloudflare R2. Passo a passo em `docs/BACKUP.md`. Migração de dados: `docs/MIGRACAO.md`.
+
+**1.14.1**: só o site (texto da página inicial e título da aba). Nenhuma migração.
+
+**1.14.0**: migração 019 (só acrescenta colunas). Atenção: a partir desta versão os limites "Máx. usuários" e "Máx. filiais" dos planos passam a valer. Confira os planos antes do deploy; quem já estiver acima do limite continua funcionando, só não cadastra novos.
+
+**1.13.1**: nenhuma migração nova. Ajuste de velocidade da IA generativa.
+
+**1.13.0**: migração 018 (só cria tabelas: IA, leitura de documentos e consultas ao jurídico). Recomendado criar `ENCRYPTION_KEY` no Railway antes de cadastrar chaves de IA. Passo a passo em `docs/IA.md`.
+
+**1.12.0**: nenhuma migração nova. A AXIA passa a responder "por que meu lucro caiu?" com um pré-diagnóstico, e há a nova tela Intelligence › Diagnóstico do Lucro.
+
+**1.11.3**: nenhuma migração nova. Com `DEMO_URL=https://demo.axionyxerp.com.br` na produção, a página de apresentação mostra o botão "Acessar a demonstração" (ver `docs/DEMONSTRACAO.md`).
+
+**1.11.2**: nenhuma migração nova. O serviço de demonstração confere a conta na subida: senha trocada na variável passa a valer, e e-mail novo ou montagem incompleta remonta a demonstração.
+
+**1.11.1**: nenhuma migração nova. Com `DEMO_URL` no serviço de produção, `www.axionyxerp.com.br/demo` e um link discreto no rodapé levam à demonstração, sem subdomínio (ver `docs/DEMONSTRACAO.md`).
+
+**1.11.0**: nenhuma migração nova e nada muda no serviço de produção (o modo demonstração só liga com `DEMO_MODE=true`). Para criar o ambiente de demonstração separado, siga `docs/DEMONSTRACAO.md` (novo banco + novo serviço no Railway).
+

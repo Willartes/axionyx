@@ -57,6 +57,11 @@ const TABS: { id: string; label: string; icon: string; title: string; desc: stri
     { section: 'agenda', key: 'fusoHorario', label: 'Fuso horário da agenda', type: 'select', module: 'agenda', options: [['America/Sao_Paulo', 'Brasília (SP, RJ, MG, Sul, GO, DF, BA, NE)'], ['America/Manaus', 'Amazonas (AM)'], ['America/Cuiaba', 'Mato Grosso (MT)'],
       ['America/Campo_Grande', 'Mato Grosso do Sul (MS)'], ['America/Porto_Velho', 'Rondônia (RO)'], ['America/Boa_Vista', 'Roraima (RR)'], ['America/Rio_Branco', 'Acre (AC)'], ['America/Belem', 'Pará/Amapá (PA, AP)'], ['America/Noronha', 'Fernando de Noronha']] },
   ] },
+  { id: 'previsao', label: 'Previsão de demanda', icon: 'trending-up', title: 'Previsão de demanda', desc: 'Período padrão da previsão (semanal ou mensal) e horizonte sugerido. Na tela de previsão o usuário pode alternar a qualquer momento.', fields: [
+    { section: 'previsao', key: 'periodo', label: 'Período padrão', desc: 'Semanal: giro rápido (moda, mercado, bebidas). Mensal: compras mensais, produtos de giro lento ou sazonais', type: 'select', options: [['semanal', 'Semanal'], ['mensal', 'Mensal']] },
+    { section: 'previsao', key: 'horizonteSemanas', label: 'Horizonte padrão (semanal)', type: 'select', options: [['1', '1 semana'], ['2', '2 semanas'], ['3', '3 semanas'], ['4', '4 semanas'], ['6', '6 semanas'], ['8', '8 semanas'], ['12', '12 semanas']] },
+    { section: 'previsao', key: 'horizonteMeses', label: 'Horizonte padrão (mensal)', type: 'select', options: [['1', '1 mês'], ['2', '2 meses'], ['3', '3 meses'], ['6', '6 meses'], ['12', '12 meses']] },
+  ] },
   { id: 'oficina', label: 'Oficina', icon: 'wrench', title: 'Oficina', desc: 'Valor da hora de mão de obra, garantia e aprovação do orçamento', fields: [
     { section: 'oficina', key: 'valorHora', label: 'Valor da hora de mão de obra', desc: 'Sugerido em cada nova OS (pode ser ajustado por OS por quem tem permissão de aprovar)', type: 'number', min: 0, max: 5000, step: 5, suffix: 'R$/h', module: 'oficina' },
     { section: 'oficina', key: 'garantiaDias', label: 'Garantia padrão dos serviços', desc: 'Contada a partir da entrega do veículo (o CDC prevê no mínimo 90 dias para serviços duráveis)', type: 'number', min: 0, max: 3650, suffix: 'dias', module: 'oficina' },

@@ -10,7 +10,7 @@ axionyx/
 │   ├── migrations/     001_core · 002_catalogo_estoque · 003_vendas_financeiro · 004_fiscal_integracoes_outros · 005_precificacao · 006_whatsapp_empresa · 007_segmentos · 008_hortifruti_adega · 009_site_contatos · 010_mercado_cosmeticos · 011_servicos
 │   └── src/            core (http, auth, validação, RBAC) · services (regras de negócio) · modules (rotas) · integrations · test
 ├── frontend/           Angular 22 (angular.json, proxy para /api)
-├── docs/               INTEGRACOES.md (contratos e variáveis) · OPERACAO.md (instalação, atualização) · BACKUP.md (backup e restauração) · MIGRACAO.md (dados de outro ERP)
+├── docs/               INTEGRACOES.md (contratos e variáveis) · OPERACAO.md (instalação, atualização) · BACKUP.md (backup e restauração) · MIGRACAO.md (dados de outro ERP) · PREVISAO.md (previsão de demanda)
 ├── Dockerfile · docker-compose.yml
 ```
 
@@ -297,6 +297,15 @@ Novo segmento **Clínicas e consultórios de saúde**, para o profissional que a
 - **Endurecimento**: cabeçalhos HSTS (produção), Permissions-Policy e CORP; `/api/health` público sem versão (versão em `/api/version`, autenticado); limites de tentativa com limpeza de memória; token de sessão só no `sessionStorage` ("Lembrar-me" guarda apenas o e-mail); arquivos estáticos e nomes de upload validados; conciliação filtrada por empresa; dependências de execução com versão fixa.
 - Correção de comportamento: editar um usuário (ex.: desativar) não reinicia mais filiais nem a marcação de vendedor.
 - Migração `017_seguranca.sql` só acrescenta colunas.
+
+### 1.17.0 — Previsão de demanda com rede neural (algoritmos do AXIONYX ERP JavaFX)
+- **6 métodos do sistema original** no servidor: Naive, média móvel (3), suavização exponencial (α 0,3), regressão linear, ARIMA(1,1,1) por Hannan-Rissanen e **rede neural MLP** (janela 3, 5 neurônios, 300 épocas, taxa 0,1, semente 42).
+- **Mesma lógica**: holdout cronológico 80/20 em rodadas do horizonte, sem retreinar; recomendado pelo menor RMSE + MAPE; previsão do mesmo método treinado na série inteira; explicação do porquê e nível de confiança.
+- Conferido contra o código Java original em 28 casos: mesmo método recomendado em todos, resultados idênticos (rede neural: diferença só na 15ª casa decimal).
+- **Semanal ou mensal**: padrão por empresa em Configurações › Previsão de demanda; alternável na tela; horizontes de 1 a 12 semanas ou meses.
+- **Série corrigida**: períodos sem venda entram como zero, canceladas ficam de fora, devoluções e descontos descontados, período em andamento fora do treino.
+- Tela nova: gráfico com treino, teste, previsto no teste e previsão; tabela dos 6 métodos (clique para ver qualquer um no gráfico); avisos de histórico curto e demanda intermitente.
+- Detalhes em `docs/PREVISAO.md`. Nenhuma migração.
 
 ### 1.16.1 — Botão de WhatsApp no site
 - Botão flutuante no canto inferior direito da página de apresentação: o visitante informa nome e WhatsApp, autoriza o contato e a conversa abre no WhatsApp (link oficial `wa.me`) com a mensagem pronta para a Equipe AXIONYX.

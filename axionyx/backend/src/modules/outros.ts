@@ -4,6 +4,8 @@ import { crud } from '../core/crud'
 import { v, parse } from '../core/validate'
 import { notFound, unprocessable, forbidden } from '../core/errors'
 import { BALANCE_SQL } from '../services/finance'
+import { getSettings } from '../services/settings'
+import { serieHistorica, preverDemanda, proximosPeriodos, LIMITES, type Periodo } from '../forecast/service'
 import { profitDiagnosis, diagnosisText, periodFromQuestion, type PeriodKey } from '../services/diagnosis'
 import { askAI, logUsage } from '../ai/assistant'
 import { companyAI } from '../ai/config'
@@ -111,25 +113,31 @@ router.delete('/api/documents/:id', { perm: 'documentos.editar' }, async (ctx) =
 })
 
 // ---------- Intelligence (estatística sobre dados reais; sem modelos externos) ----------
-/** Previsão semanal por média móvel com tendência linear (mínimos quadrados) das últimas 12 semanas. */
+/**
+ * Previsão de demanda: os 6 métodos do AXIONYX ERP original (Naive, média móvel, suavização exponencial, regressão
+ * linear, ARIMA(1,1,1) e rede neural MLP), avaliados por holdout cronológico 80/20 e escolhidos por RMSE + MAPE.
+ * Período semanal ou mensal (padrão da empresa em Configurações › Previsão de demanda).
+ */
 router.get('/api/intelligence/forecast', { perm: ['dashboard.ver', 'estoque.ver'] }, async (ctx) => {
+  const settings = await getSettings(db, ctx.user.companyId)
+  const periodo: Periodo = ctx.query.periodo === 'mensal' || ctx.query.periodo === 'semanal' ? ctx.query.periodo : settings.previsao.periodo === 'mensal' ? 'mensal' : 'semanal'
+  const lim = LIMITES[periodo]
+  const padrao = periodo === 'mensal' ? settings.previsao.horizonteMeses : settings.previsao.horizonteSemanas
+  const pedido = Number(ctx.query.horizon || padrao)
+  const horizonte = (lim.horizontes as readonly number[]).includes(pedido) ? pedido : (lim.horizontes as readonly number[]).includes(padrao) ? padrao : lim.horizontes[2]
+  const productId = ctx.query.product || null
+  if (productId && !(await db.one(`SELECT 1 FROM products WHERE id = $1 AND company_id = $2`, [productId, ctx.user.companyId]))) throw notFound('Produto')
   const branches = branchScope(ctx, ctx.query.branch || 'all')
-  const product = ctx.query.product || null
-  const hist = await db.many(`
-    SELECT to_char(w, 'YYYY-MM-DD') AS week, COALESCE(sum(si.qty - si.returned_qty),0)::float8 AS qty, COALESCE(sum(si.total),0) AS revenue
-      FROM generate_series(date_trunc('week', now()) - interval '11 weeks', date_trunc('week', now()), interval '1 week') w
-      LEFT JOIN sales s ON date_trunc('week', s.created_at) = w AND s.company_id = $1 AND s.type = 'venda' AND s.status <> 'cancelada' AND ($2::uuid[] IS NULL OR s.branch_id = ANY($2::uuid[]))
-      LEFT JOIN sale_items si ON si.sale_id = s.id AND ($3::uuid IS NULL OR si.variant_id IN (SELECT id FROM product_variants WHERE product_id = $3))
-     GROUP BY w ORDER BY w`, [ctx.user.companyId, branches.length ? branches : null, product])
-  const ys = hist.map((h) => Number(product ? h.qty : h.revenue))
-  const n = ys.length, xs = ys.map((_, i) => i)
-  const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n
-  const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / (xs.reduce((a, x) => a + (x - mx) ** 2, 0) || 1)
-  const intercept = my - slope * mx
-  const resid = Math.sqrt(ys.reduce((a, y, i) => a + (y - (intercept + slope * i)) ** 2, 0) / Math.max(1, n - 2))
-  const forecast = [1, 2, 3, 4].map((k) => { const val = Math.max(0, intercept + slope * (n - 1 + k)); return { step: k, value: r2(val), low: r2(Math.max(0, val - 1.28 * resid)), high: r2(val + 1.28 * resid) } })
-  const mape = ys.filter((y) => y > 0).length ? r2(ys.reduce((a, y, i) => (y > 0 ? a + Math.abs(y - (intercept + slope * i)) / y : a), 0) / ys.filter((y) => y > 0).length * 100) : null
-  return { metric: product ? 'quantidade' : 'faturamento', history: hist, forecast, trendPerWeek: r2(slope), mapePct: mape, method: 'Regressão linear sobre 12 semanas (intervalo de 80%)' }
+  const { pontos, atual } = await serieHistorica(db, { companyId: ctx.user.companyId, branches, productId, periodo, tz: settings.agenda.fusoHorario || 'America/Sao_Paulo' })
+  const base = { periodo, horizonte, horizontes: lim.horizontes, unidade: productId ? 'quantidade' : 'faturamento', serie: pontos, atual }
+  const un = periodo === 'mensal' ? 'meses' : 'semanas'
+  if (pontos.length < 2) return { ...base, insuficiente: true, mensagem: pontos.length ? `Só há 1 ${periodo === 'mensal' ? 'mês' : 'semana'} completo de histórico: é preciso pelo menos 2 para comparar os métodos.` : 'Ainda não há vendas concluídas suficientes para prever (o período em andamento não conta).' }
+  const r = preverDemanda(pontos, horizonte, periodo)
+  const avisos: string[] = []
+  if (pontos.length < 10) avisos.push(`Histórico curto (${pontos.length} ${un}): o teste usa poucos pontos e a recomendação pode mudar à medida que entram novas vendas.`)
+  const zeros = pontos.filter((p) => p.valor === 0).length
+  if (zeros / pontos.length >= 0.3) avisos.push(`${Math.round((zeros / pontos.length) * 100)}% dos períodos não tiveram venda (demanda intermitente): os métodos clássicos tendem a errar mais nesse tipo de série.`)
+  return { ...base, ...r, futuro: proximosPeriodos(pontos[pontos.length - 1].inicio, periodo, horizonte, atual.inicio), avisos }
 })
 
 /** Sugestão de reposição: média diária de 30 dias × (prazo de reposição + cobertura) − saldo. */

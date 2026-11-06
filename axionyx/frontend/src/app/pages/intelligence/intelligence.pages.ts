@@ -81,7 +81,7 @@ export class IntelligencePage {
   readonly now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   readonly modules = [
     { label: 'Diagnóstico do Lucro', icon: 'activity', color: '#C93636', bg: '#FDECEC', screen: '/diagnostico-lucro', sub: 'Por que o resultado mudou' },
-    { label: 'Previsão de Demanda', icon: 'trending-up', color: '#0875D1', bg: '#E3EFF9', screen: '/forecast', sub: '5 métodos comparados por backtest' },
+    { label: 'Previsão de Demanda', icon: 'trending-up', color: '#0875D1', bg: '#E3EFF9', screen: '/forecast', sub: '6 métodos com rede neural, semanal ou mensal' },
     { label: 'Estoque Inteligente', icon: 'flask-conical', color: '#18864B', bg: '#E8F5EE', screen: '/estoque-inteligente', sub: 'Reposição por ritmo de vendas' },
     { label: 'Pesquisa Operacional', icon: 'git-branch', color: '#D99000', bg: '#FFF4E0', screen: '/pesquisa-operacional', sub: 'Mix de compra ótimo por orçamento' },
     { label: 'Simulações', icon: 'layers', color: '#2878C7', bg: '#E3EFF9', screen: '/simulacoes', sub: 'Cenários sobre a base dos últimos 90 dias' },
@@ -96,103 +96,132 @@ export class IntelligencePage {
 })
 export class IaInsightsPage { readonly month = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }); }
 
-// ─── Previsão de demanda (backtest de 5 métodos sobre 12 semanas reais) ────
-type Model = { name: string; fit: (ys: number[]) => number; };
-const MODELS: Model[] = [
-  { name: 'Naive (última semana)', fit: (ys) => ys[ys.length - 1] },
-  { name: 'Média móvel (4 semanas)', fit: (ys) => { const t = ys.slice(-4); return t.reduce((a, b) => a + b, 0) / t.length; } },
-  { name: 'Suavização exponencial (α=0,3)', fit: (ys) => ys.reduce((s, y, i) => (i === 0 ? y : 0.3 * y + 0.7 * s), 0) },
-  { name: 'Regressão linear', fit: (ys) => { const n = ys.length; if (n < 2) return ys[0] ?? 0; const mx = (n - 1) / 2, my = ys.reduce((a, b) => a + b, 0) / n; let sxy = 0, sxx = 0; ys.forEach((y, i) => { sxy += (i - mx) * (y - my); sxx += (i - mx) ** 2; }); const b = sxy / sxx; return Math.max(0, my + b * (n - mx)); } },
-  { name: 'Média histórica', fit: (ys) => ys.reduce((a, b) => a + b, 0) / ys.length },
-];
-function backtest(ys: number[], m: Model) {
-  const errs: { e: number; y: number }[] = [];
-  for (let t = 4; t < ys.length; t++) errs.push({ e: m.fit(ys.slice(0, t)) - ys[t], y: ys[t] });
-  const n = errs.length || 1;
-  const mae = errs.reduce((a, x) => a + Math.abs(x.e), 0) / n;
-  const rmse = Math.sqrt(errs.reduce((a, x) => a + x.e ** 2, 0) / n);
-  const nz = errs.filter((x) => x.y > 0);
-  const mape = nz.length ? (nz.reduce((a, x) => a + Math.abs(x.e) / x.y, 0) / nz.length) * 100 : null;
-  const sumY = errs.reduce((a, x) => a + x.y, 0);
-  const bias = sumY ? (errs.reduce((a, x) => a + x.e, 0) / sumY) * 100 : 0;
-  return { mae, rmse, mape, bias, sd: rmse };
-}
-
+// ─── Previsão de demanda: 6 métodos do sistema original (inclui rede neural MLP), holdout 80/20, semanal ou mensal ────
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 @Component({
   selector: 'ax-forecast',
   imports: [FormsModule, IconComponent, StateComponent, ...CHARTS],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [`
+    .seg { display:inline-flex; border:1px solid #D4DEE8; border-radius:8px; overflow:hidden; }
+    .seg button { border:none; background:#fff; padding:7px 14px; font-size:12px; font-weight:600; color:#3B5266; cursor:pointer; }
+    .seg button.on { background:#0875D1; color:#fff; }
+    .kpis { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; }
+    .k { background:#fff; border:1px solid #E3EAF1; border-radius:10px; padding:12px 14px; }
+    .k small { display:block; font-size:10px; font-weight:600; color:#647687; text-transform:uppercase; letter-spacing:.04em; margin-bottom:4px; }
+    .k b { font-size:19px; color:#172B3A; } .k span { display:block; font-size:11px; color:#647687; margin-top:2px; }
+    .legend { display:flex; gap:16px; font-size:11px; color:#647687; flex-wrap:wrap; margin-bottom:10px; }
+    .legend i { display:inline-block; width:14px; vertical-align:middle; margin-right:4px; }
+    .why { background:#F3F8FD; border:1px solid #CFE2F3; border-radius:10px; padding:12px 14px; font-size:13px; color:#172B3A; line-height:1.5; }
+    .warn { background:#FFF7E6; border:1px solid #F5D9A0; color:#7A5200; border-radius:8px; padding:8px 12px; font-size:12px; }
+    tr.sel td { background:#F0F7FF; }
+    td.num, th.num { white-space:nowrap; }
+    @media (max-width: 1000px) { .kpis { grid-template-columns:1fr 1fr; } }
+  `],
   template: `
-  <div style="padding:24px;display:flex;flex-direction:column;gap:16px">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+  <div style="padding:24px;display:flex;flex-direction:column;gap:14px;max-width:1280px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap">
       <div><h1 style="font-size:20px;font-weight:700;color:#172B3A;margin-bottom:2px">Previsão de Demanda</h1>
-        <p style="font-size:13px;color:#647687">Método: {{ model() }} · {{ product() ? 'Produto: ' + product().name + ' (peças)' : 'Faturamento total (R$)' }} · Horizonte: {{ horizon }} semanas</p></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select class="input-field" style="width:240px;font-size:12px" [ngModel]="productId" (ngModelChange)="productId = $event; run()"><option value="">Faturamento total</option>@for (p of products(); track p.id) { <option [value]="p.id">{{ p.code }} · {{ p.name }}</option> }</select>
-        <select class="input-field" style="width:230px;font-size:12px" [ngModel]="model()" (ngModelChange)="model.set($event)">@for (m of ranking(); track m.name) { <option [value]="m.name">{{ m.name }}</option> }</select>
-        <select class="input-field" style="width:120px;font-size:12px" [(ngModel)]="horizon" (ngModelChange)="tick.set(tick() + 1)">@for (h of [2,4,6,8]; track h) { <option [ngValue]="h">{{ h }} semanas</option> }</select>
-        <button class="btn-primary" style="font-size:12px" (click)="run()"><ax-icon name="play" [size]="13" /> Executar previsão</button>
+        <p style="font-size:13px;color:#647687">6 métodos comparados por holdout cronológico (80% treino / 20% teste) · o recomendado tem o menor RMSE + MAPE no teste</p></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="input-field" style="width:250px;font-size:12px" [ngModel]="productId" (ngModelChange)="productId = $event; run()"><option value="">Faturamento total (R$)</option>@for (p of products(); track p.id) { <option [value]="p.id">{{ p.code }} · {{ p.name }}</option> }</select>
+        <div class="seg" role="group" aria-label="Período"><button [class.on]="periodo() === 'semanal'" (click)="setPeriodo('semanal')">Semanal</button><button [class.on]="periodo() === 'mensal'" (click)="setPeriodo('mensal')">Mensal</button></div>
+        <select class="input-field" style="width:130px;font-size:12px" [ngModel]="horizon" (ngModelChange)="horizon = $event; run()">@for (h of horizontes(); track h) { <option [ngValue]="h">{{ h }} {{ h === 1 ? (periodo() === 'mensal' ? 'mês' : 'semana') : (periodo() === 'mensal' ? 'meses' : 'semanas') }}</option> }</select>
       </div>
     </div>
-    <ax-state [loading]="!hist()" />
-    @if (hist()) {
-      <div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:10px">
-        @for (k of metrics(); track k[0]) { <div class="kpi-card" style="text-align:center"><div style="font-size:10px;font-weight:600;color:#647687;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">{{ k[0] }}</div><div class="mono" style="font-size:20px;font-weight:700;color:#0875D1">{{ k[1] }}</div></div> }
-      </div>
-      <div class="card" style="padding:16px">
-        <div style="font-size:13px;font-weight:600;color:#172B3A;margin-bottom:4px">Série histórica semanal + Previsão</div>
-        <div style="display:flex;gap:16px;font-size:11px;color:#647687;margin-bottom:12px">
-          <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:2px;background:#0875D1;display:inline-block"></span> Real</span>
-          <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;border-top:2px dashed #00A6D6;display:inline-block"></span> Previsão</span>
-          <span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:8px;background:rgba(0,166,214,0.15);display:inline-block"></span> Intervalo ~80% (±1,28 × RMSE do backtest)</span>
+    <ax-state [loading]="loading()" />
+    @if (!loading() && r(); as g) {
+      @if (g.insuficiente) { <div class="card" style="padding:28px;text-align:center;color:#647687;font-size:13px"><ax-icon name="info" [size]="20" /><div style="margin-top:6px">{{ g.mensagem }}</div></div> }
+      @else {
+        @for (a of g.avisos; track a) { <div class="warn">{{ a }}</div> }
+        <div class="kpis">
+          <div class="k"><small>Demanda prevista</small><b class="mono">{{ f(total()) }}</b><span>próximos {{ g.horizonte }} {{ un(g.horizonte) }}</span></div>
+          <div class="k"><small>Média por {{ periodo() === 'mensal' ? 'mês' : 'semana' }}</small><b class="mono">{{ f(total() / g.horizonte) }}</b><span>histórico: {{ f(mediaHist()) }}</span></div>
+          <div class="k"><small>Método {{ selIdx() === g.melhor ? 'recomendado' : 'selecionado' }}</small><b style="font-size:14px">{{ cur().nome }}</b><span>{{ cur().fallback ? 'usou o Naive (pouco histórico)' : 'clique na tabela para comparar' }}</span></div>
+          <div class="k"><small>Erro no teste (RMSE · MAE)</small><b class="mono">{{ f(cur().rmse) }}</b><span>MAE {{ f(cur().mae) }} · sMAPE {{ pct(cur().smape) }}</span></div>
+          <div class="k"><small>Confiança</small><b style="text-transform:capitalize">{{ g.avaliacao.confianca }}</b><span>{{ g.serie.length }} {{ un(g.serie.length) }} de histórico</span></div>
         </div>
-        <ax-line-chart [labels]="labels()" [series]="series()" [bandValues]="band()" [height]="240" [area]="false" [fmt]="fmt()" />
-      </div>
-      <div class="card" style="overflow:hidden">
-        <div style="padding:12px 16px;border-bottom:1px solid #F0F4F8;font-size:13px;font-weight:600;color:#172B3A">Comparação de Métodos <span class="muted" style="font-weight:400;font-size:11px">— backtest de previsão 1 semana à frente sobre as últimas {{ (hist()?.length ?? 4) - 4 }} semanas</span></div>
-        <table class="data-table" style="width:100%;border-collapse:collapse">
-          <thead><tr><th>Método</th><th style="text-align:center">MAPE</th><th style="text-align:center">MAE</th><th style="text-align:center">RMSE</th><th style="text-align:center">Viés</th><th style="text-align:center">Status</th></tr></thead>
-          <tbody>@for (m of ranking(); track m.name; let i = $index) {
-            <tr [style.background]="i === 0 ? '#F0F7FF' : null" style="cursor:pointer" (click)="model.set(m.name)">
-              <td [style.font-weight]="i === 0 ? 700 : 400">@if (i === 0) { <ax-icon name="axionyx" [size]="13" color="#00A6D6" /> } {{ m.name }}</td>
-              <td class="mono" style="text-align:center;font-size:12px" [style.color]="m.mape !== null && m.mape < 20 ? '#18864B' : '#D99000'">{{ m.mape === null ? '—' : m.mape.toFixed(1).replace('.', ',') + '%' }}</td>
-              <td class="mono" style="text-align:center;font-size:12px">{{ f(m.mae) }}</td><td class="mono" style="text-align:center;font-size:12px">{{ f(m.rmse) }}</td>
-              <td class="mono" style="text-align:center;font-size:12px">{{ (m.bias > 0 ? '+' : '') + m.bias.toFixed(1).replace('.', ',') }}%</td>
-              <td style="text-align:center">@if (i === 0) { <span class="badge badge-cyan">Recomendado</span> } @else if (m.name === model()) { <span class="badge badge-info">Selecionado</span> } @else { <span class="badge badge-muted">Disponível</span> }</td></tr>
-          }</tbody>
-        </table>
-      </div>
-      <p style="font-size:11px;color:#647687">Com apenas 12 semanas de histórico, sazonalidade anual não é capturada. Use a previsão como apoio à decisão de compra, não como garantia.</p>
+        <div class="card" style="padding:16px">
+          <div style="font-size:13px;font-weight:600;color:#172B3A;margin-bottom:6px">{{ productId ? 'Unidades vendidas' : 'Faturamento líquido' }} por {{ periodo() === 'mensal' ? 'mês' : 'semana' }} · teste e previsão</div>
+          <div class="legend">
+            <span><i style="border-top:2px solid #0875D1"></i>Real (treino)</span>
+            <span><i style="border-top:2px solid #172B3A"></i>Real (teste)</span>
+            <span><i style="border-top:2px dashed #E8A317"></i>Previsto no teste</span>
+            <span><i style="border-top:2px dashed #00A6D6"></i>Previsão</span>
+            <span><i style="height:8px;background:rgba(0,166,214,.15)"></i>Faixa aproximada (±1,28 × RMSE do teste)</span>
+          </div>
+          <ax-line-chart [labels]="labels()" [series]="series()" [bandValues]="band()" [height]="260" [area]="false" [fmt]="fmtFn()" />
+          @if (g.atual?.inicio) { <div class="muted" style="font-size:11px;margin-top:6px">{{ periodo() === 'mensal' ? 'O mês' : 'A semana' }} em andamento ({{ lab(g.atual.inicio) }}, {{ f(g.atual.valor) }} até agora) não entra no treino: é o primeiro ponto da previsão.</div> }
+        </div>
+        <div class="why"><b>Por que {{ g.metodos[g.melhor].nome }}?</b> {{ g.avaliacao.conclusao }}
+          <div style="font-size:12px;color:#3B5266;margin-top:6px">{{ g.avaliacao.justificativa }} {{ g.avaliacao.recomendacao }}</div></div>
+        <div class="card" style="overflow:hidden">
+          <div style="padding:12px 16px;border-bottom:1px solid #F0F4F8;font-size:13px;font-weight:600;color:#172B3A">Comparação dos métodos <span class="muted" style="font-weight:400;font-size:11px">— teste com os últimos {{ g.serie.length - g.nTreino }} {{ un(g.serie.length - g.nTreino) }}, em rodadas de {{ g.horizonte }}</span></div>
+          <div style="overflow-x:auto"><table class="data-table" style="width:100%;border-collapse:collapse">
+            <thead><tr><th>Método</th><th class="num">RMSE</th><th class="num">MAE</th><th class="num">MAPE</th><th class="num">sMAPE</th><th class="num">Viés</th><th class="num">Score (RMSE+MAPE)</th><th class="num">Previsão total</th><th></th></tr></thead>
+            <tbody>@for (m of g.metodos; track m.nomeOriginal; let i = $index) {
+              <tr [class.sel]="i === selIdx()" style="cursor:pointer" (click)="sel.set(i)">
+                <td [style.font-weight]="i === g.melhor ? 700 : 400">@if (i === g.melhor) { <ax-icon name="axionyx" [size]="13" color="#00A6D6" /> } {{ m.nome }}@if (m.fallback) { <span class="badge badge-warning" style="margin-left:6px" title="Pouco histórico para este método: usou o Naive">Naive</span> }</td>
+                <td class="num mono">{{ f(m.rmse) }}</td><td class="num mono">{{ f(m.mae) }}</td><td class="num mono">{{ pct(m.mape) }}</td><td class="num mono">{{ pct(m.smape) }}</td>
+                <td class="num mono">{{ m.bias === null ? '—' : (m.bias > 0 ? '+' : '') + f(m.bias) }}</td>
+                <td class="num mono">{{ m.score === null ? '—' : dec(m.score) }}</td>
+                <td class="num mono">{{ f(sum(m.previsao)) }}</td>
+                <td>@if (i === g.melhor) { <span class="badge badge-cyan">Recomendado</span> } @else if (i === selIdx()) { <span class="badge badge-info">No gráfico</span> }</td>
+              </tr>
+            }</tbody>
+          </table></div>
+        </div>
+        <details style="font-size:12px;color:#647687"><summary style="cursor:pointer">Detalhes e limitações</summary>
+          <ul style="margin:8px 0 0 18px;line-height:1.6">@for (x of g.avaliacao.fatos; track x) { <li>{{ x }}</li> }@for (x of g.avaliacao.limitacoes; track x) { <li>{{ x }}</li> }
+            <li>Série: períodos sem venda entram como zero; vendas canceladas ficam de fora; devoluções e descontos são descontados; frete não entra no faturamento. O período em andamento e um primeiro período incompleto (início do uso do sistema) não entram no treino.</li>
+            <li>sMAPE só é calculado para Naive, ARIMA e rede neural, como no sistema original.</li>
+            <li>Viés = média de (real − previsto) no teste: positivo indica que o método previu abaixo do real.</li></ul></details>
+      }
     }
   </div>`,
 })
 export class ForecastPage implements OnInit {
   private api = inject(Api);
-  readonly hist = signal<any[] | null>(null); readonly products = signal<any[]>([]); readonly product = signal<any>(null); readonly model = signal(''); readonly tick = signal(0);
-  productId = ''; horizon = 4;
-  async ngOnInit() { this.api.get<any>('/products', { size: 200, active: 'true' }).then((r) => this.products.set(r.items)).catch(() => {}); this.run(); }
+  readonly r = signal<any>(null); readonly loading = signal(true); readonly products = signal<any[]>([]);
+  readonly periodo = signal<'semanal' | 'mensal' | ''>(''); readonly sel = signal(0);
+  productId = ''; horizon: number | null = null;
+  ngOnInit() { this.api.get<any>('/products', { size: 300, active: 'true' }).then((x) => this.products.set(x.items)).catch(() => {}); this.run(); }
+  setPeriodo(p: 'semanal' | 'mensal') { if (this.periodo() === p) return; this.periodo.set(p); this.horizon = null; this.run(); }
   async run() {
-    this.hist.set(null); this.product.set(this.products().find((p) => p.id === this.productId) ?? null);
-    const r: any = await this.api.get('/intelligence/forecast', { product: this.productId || undefined });
-    this.hist.set(r.history); this.model.set(this.ranking()[0]?.name ?? MODELS[3].name);
+    this.loading.set(true);
+    try {
+      const g: any = await this.api.get('/intelligence/forecast', { product: this.productId || undefined, periodo: this.periodo() || undefined, horizon: this.horizon ?? undefined });
+      this.periodo.set(g.periodo); this.horizon = g.horizonte; this.r.set(g); this.sel.set(g.melhor ?? 0);
+    } catch { this.r.set(null); } finally { this.loading.set(false); }
   }
-  readonly ys = computed(() => (this.hist() ?? []).map((h) => Number(this.productId ? h.qty : h.revenue)));
-  readonly ranking = computed(() => { const ys = this.ys(); if (ys.length < 6) return MODELS.map((m) => ({ name: m.name, mae: 0, rmse: 0, mape: null as number | null, bias: 0 }));
-    return MODELS.map((m) => ({ name: m.name, ...backtest(ys, m) })).sort((a, b) => (a.mape ?? 1e9) - (b.mape ?? 1e9) || a.rmse - b.rmse); });
-  readonly cur = computed(() => this.ranking().find((m) => m.name === this.model()) ?? this.ranking()[0]);
-  readonly forecast = computed(() => { this.tick(); const m = MODELS.find((x) => x.name === this.model()) ?? MODELS[3]; const ys = [...this.ys()]; const out: number[] = [];
-    for (let k = 0; k < this.horizon; k++) { const v = Math.max(0, m.fit(ys)); out.push(v); ys.push(v); } return out; });
-  readonly labels = computed(() => { this.tick(); const h = this.hist() ?? []; const last = h.length ? new Date(h[h.length - 1].week + 'T12:00:00') : new Date();
-    const fut = Array.from({ length: this.horizon }, (_, i) => { const d = new Date(last); d.setDate(d.getDate() + 7 * (i + 1)); return d.toISOString().slice(0, 10); });
-    return [...h.map((x) => x.week), ...fut].map((w) => dateBr(w).slice(0, 5)); });
-  readonly series = computed<Series[]>(() => { const ys = this.ys(); const fc = this.forecast(); const n = ys.length;
-    return [{ name: 'Real', color: '#0875D1', values: [...ys, ...fc.map(() => null)] as any }, { name: 'Previsão', color: '#00A6D6', dashed: true, values: [...ys.map((_, i) => (i === n - 1 ? ys[i] : null)), ...fc] as any }]; });
-  readonly band = computed<[(number | null)[], (number | null)[]]>(() => { const n = this.ys().length; const sd = this.cur()?.rmse ?? 0; const fc = this.forecast();
-    return [[...Array(n).fill(null), ...fc.map((v, i) => Math.max(0, v - 1.28 * sd * Math.sqrt(i + 1)))], [...Array(n).fill(null), ...fc.map((v, i) => v + 1.28 * sd * Math.sqrt(i + 1))]]; });
-  readonly fmt = computed(() => (this.productId ? (v: number) => num(v, 0) : (v: number) => brl(v)));
-  f(v: number) { return this.productId ? num(v, 1) : brl(v); }
-  readonly metrics = computed(() => { const c = this.cur(); const fc = this.forecast(); return [['MAE', this.f(c?.mae ?? 0)], ['MAPE', c?.mape === null || c?.mape === undefined ? '—' : c.mape.toFixed(1).replace('.', ',') + '%'], ['RMSE', this.f(c?.rmse ?? 0)],
-    ['Viés', ((c?.bias ?? 0) > 0 ? '+' : '') + (c?.bias ?? 0).toFixed(1).replace('.', ',') + '%'], ['Total previsto', this.f(fc.reduce((a, b) => a + b, 0))]]; });
+  readonly horizontes = computed<number[]>(() => this.r()?.horizontes ?? (this.periodo() === 'mensal' ? [1, 2, 3, 6, 12] : [1, 2, 3, 4, 6, 8, 12]));
+  readonly selIdx = computed(() => this.sel());
+  readonly cur = computed(() => this.r()?.metodos?.[this.sel()] ?? { nome: '—', previsao: [], teste: [] });
+  readonly total = computed(() => this.sum(this.cur().previsao));
+  readonly mediaHist = computed(() => { const s = this.r()?.serie ?? []; return s.length ? s.reduce((a: number, p: any) => a + p.valor, 0) / s.length : 0; });
+  sum(v: number[]) { return (v ?? []).reduce((a, b) => a + b, 0); }
+  un(n: number) { return this.periodo() === 'mensal' ? (n === 1 ? 'mês' : 'meses') : (n === 1 ? 'semana' : 'semanas'); }
+  lab(d: string) { const [y, m, dd] = d.split('-'); return this.periodo() === 'mensal' ? `${MESES[Number(m) - 1]}/${y.slice(2)}` : `${dd}/${m}`; }
+  readonly labels = computed(() => { const g = this.r(); if (!g?.serie) return []; return [...g.serie.map((p: any) => p.inicio), ...(g.futuro ?? [])].map((d: string) => this.lab(d)); });
+  readonly series = computed<Series[]>(() => {
+    const g = this.r(); if (!g?.serie) return [];
+    const ys = g.serie.map((p: any) => p.valor), n = ys.length, nt = g.nTreino, h = g.futuro.length, m = this.cur();
+    const pad = (k: number) => Array(k).fill(null);
+    return [
+      { name: 'Real (treino)', color: '#0875D1', values: [...ys.slice(0, nt), ...pad(n - nt + h)] },
+      { name: 'Real (teste)', color: '#172B3A', values: [...pad(nt - 1), ...ys.slice(nt - 1), ...pad(h)] },
+      { name: 'Previsto no teste', color: '#E8A317', dashed: true, values: [...pad(nt - 1), ys[nt - 1], ...m.teste, ...pad(h)] },
+      { name: 'Previsão', color: '#00A6D6', dashed: true, values: [...pad(n - 1), ys[n - 1], ...m.previsao] },
+    ] as any;
+  });
+  readonly band = computed<[(number | null)[], (number | null)[]] | null>(() => {
+    const g = this.r(); if (!g?.serie) return null; const sd = this.cur().rmse ?? 0, n = g.serie.length, fc: number[] = this.cur().previsao;
+    return [[...Array(n).fill(null), ...fc.map((v, i) => Math.max(0, v - 1.28 * sd * Math.sqrt(i + 1)))], [...Array(n).fill(null), ...fc.map((v, i) => v + 1.28 * sd * Math.sqrt(i + 1))]];
+  });
+  readonly fmtFn = computed(() => (this.productId ? (v: number) => num(v, 0) : (v: number) => brl(v)));
+  f(v: number | null | undefined) { if (v === null || v === undefined || !Number.isFinite(v)) return '—'; return this.productId ? num(v, 1) : brl(v); }
+  pct(v: number | null) { return v === null || v === undefined ? '—' : v.toFixed(1).replace('.', ',') + '%'; }
+  dec(v: number) { return v.toLocaleString('pt-BR', { maximumFractionDigits: 2 }); }
 }
 
 // ─── Estoque inteligente (reposição) ───────────────────────────────────────
